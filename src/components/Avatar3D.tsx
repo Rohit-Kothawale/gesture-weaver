@@ -7,9 +7,16 @@ interface Avatar3DProps {
   frame: HandFrame | null;
 }
 
+// Body offset used for positioning
+const BODY_OFFSET: [number, number, number] = [0, -0.8, 0];
+
+// Shoulder positions relative to body
+const LEFT_SHOULDER: [number, number, number] = [-0.5, 0.75, 0];
+const RIGHT_SHOULDER: [number, number, number] = [0.5, 0.75, 0];
+
 const AvatarBody = () => {
   return (
-    <group position={[0, -0.8, 0]}>
+    <group position={BODY_OFFSET}>
       {/* Head */}
       <mesh position={[0, 1.6, 0]}>
         <sphereGeometry args={[0.25, 32, 32]} />
@@ -55,31 +62,52 @@ const AvatarBody = () => {
         <sphereGeometry args={[0.1, 16, 16]} />
         <meshStandardMaterial color="#4299e1" roughness={0.6} />
       </mesh>
-      
-      {/* Left Upper Arm */}
-      <mesh position={[-0.55, 0.85, 0]} rotation={[0, 0, Math.PI / 6]}>
-        <capsuleGeometry args={[0.06, 0.25, 8, 16]} />
-        <meshStandardMaterial color="#f5d0c5" roughness={0.8} />
-      </mesh>
-      
-      {/* Right Upper Arm */}
-      <mesh position={[0.55, 0.85, 0]} rotation={[0, 0, -Math.PI / 6]}>
-        <capsuleGeometry args={[0.06, 0.25, 8, 16]} />
-        <meshStandardMaterial color="#f5d0c5" roughness={0.8} />
-      </mesh>
     </group>
   );
 };
 
-interface AvatarHandProps {
+interface ArmSegmentProps {
+  start: [number, number, number];
+  end: [number, number, number];
+  color: string;
+  radius?: number;
+}
+
+const ArmSegment = ({ start, end, color, radius = 0.045 }: ArmSegmentProps) => {
+  const startVec = new THREE.Vector3(...start);
+  const endVec = new THREE.Vector3(...end);
+  
+  const midpoint = new THREE.Vector3().addVectors(startVec, endVec).multiplyScalar(0.5);
+  const direction = new THREE.Vector3().subVectors(endVec, startVec);
+  const length = direction.length();
+  
+  const quaternion = new THREE.Quaternion();
+  quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
+  
+  return (
+    <>
+      {/* Joint at start */}
+      <mesh position={start}>
+        <sphereGeometry args={[radius * 1.2, 16, 16]} />
+        <meshStandardMaterial color={color} roughness={0.6} />
+      </mesh>
+      {/* Arm segment */}
+      <mesh position={midpoint} quaternion={quaternion}>
+        <capsuleGeometry args={[radius, length - radius * 2, 8, 16]} />
+        <meshStandardMaterial color={color} roughness={0.6} />
+      </mesh>
+    </>
+  );
+};
+
+interface AvatarHandWithArmProps {
   landmarks: [number, number, number][];
   color: string;
   isLeft: boolean;
+  shoulderPos: [number, number, number];
 }
 
-const AvatarHand = ({ landmarks, color, isLeft }: AvatarHandProps) => {
-  const groupRef = useRef<THREE.Group>(null);
-  
+const AvatarHandWithArm = ({ landmarks, color, isLeft, shoulderPos }: AvatarHandWithArmProps) => {
   if (!isHandVisible(landmarks)) return null;
   
   const normalizedLandmarks = normalizeCoordinates(landmarks);
@@ -96,18 +124,44 @@ const AvatarHand = ({ landmarks, color, isLeft }: AvatarHandProps) => {
     z * handScale + zOffset
   ]);
   
+  // Get wrist position (landmark 0)
+  const wristPos = scaledLandmarks[0];
+  
+  // Calculate elbow position (midpoint between shoulder and wrist, slightly bent)
+  const elbowPos: [number, number, number] = [
+    (shoulderPos[0] + wristPos[0]) / 2 + (isLeft ? -0.1 : 0.1),
+    (shoulderPos[1] + wristPos[1]) / 2 - 0.05,
+    (shoulderPos[2] + wristPos[2]) / 2 + 0.15
+  ];
+  
   return (
-    <group ref={groupRef}>
-      {/* Draw landmarks */}
+    <group>
+      {/* Upper arm: shoulder to elbow */}
+      <ArmSegment 
+        start={shoulderPos} 
+        end={elbowPos} 
+        color="#f5d0c5" 
+        radius={0.055}
+      />
+      
+      {/* Forearm: elbow to wrist */}
+      <ArmSegment 
+        start={elbowPos} 
+        end={wristPos} 
+        color="#f5d0c5" 
+        radius={0.045}
+      />
+      
+      {/* Draw hand landmarks */}
       {scaledLandmarks.map((pos, idx) => {
         const isFingertip = [4, 8, 12, 16, 20].includes(idx);
         const isWrist = idx === 0;
         
         return (
           <mesh key={idx} position={pos}>
-            <sphereGeometry args={[isWrist ? 0.04 : isFingertip ? 0.035 : 0.025, 16, 16]} />
+            <sphereGeometry args={[isWrist ? 0.05 : isFingertip ? 0.035 : 0.025, 16, 16]} />
             <meshStandardMaterial 
-              color={isFingertip ? "#ffffff" : color}
+              color={isFingertip ? "#ffffff" : isWrist ? "#f5d0c5" : color}
               emissive={isFingertip ? color : "#000000"}
               emissiveIntensity={isFingertip ? 0.5 : 0}
               roughness={0.3}
@@ -116,10 +170,10 @@ const AvatarHand = ({ landmarks, color, isLeft }: AvatarHandProps) => {
         );
       })}
       
-      {/* Draw connections */}
+      {/* Draw hand connections */}
       {HAND_CONNECTIONS.map(([start, end], idx) => {
-        const startPos = new THREE.Vector3(...scaledLandmarks[start] as [number, number, number]);
-        const endPos = new THREE.Vector3(...scaledLandmarks[end] as [number, number, number]);
+        const startPos = new THREE.Vector3(...scaledLandmarks[start]);
+        const endPos = new THREE.Vector3(...scaledLandmarks[end]);
         
         const midpoint = new THREE.Vector3().addVectors(startPos, endPos).multiplyScalar(0.5);
         const direction = new THREE.Vector3().subVectors(endPos, startPos);
@@ -149,20 +203,34 @@ const Avatar3D = ({ frame }: Avatar3DProps) => {
     }
   });
   
+  // Calculate absolute shoulder positions (body offset + relative shoulder position)
+  const leftShoulderAbs: [number, number, number] = [
+    BODY_OFFSET[0] + LEFT_SHOULDER[0],
+    BODY_OFFSET[1] + LEFT_SHOULDER[1],
+    BODY_OFFSET[2] + LEFT_SHOULDER[2]
+  ];
+  const rightShoulderAbs: [number, number, number] = [
+    BODY_OFFSET[0] + RIGHT_SHOULDER[0],
+    BODY_OFFSET[1] + RIGHT_SHOULDER[1],
+    BODY_OFFSET[2] + RIGHT_SHOULDER[2]
+  ];
+  
   return (
     <group ref={groupRef}>
       <AvatarBody />
       {frame && (
         <>
-          <AvatarHand 
+          <AvatarHandWithArm 
             landmarks={frame.leftHand} 
             color="#00d4ff" 
             isLeft={true}
+            shoulderPos={leftShoulderAbs}
           />
-          <AvatarHand 
+          <AvatarHandWithArm 
             landmarks={frame.rightHand} 
             color="#00ff88" 
             isLeft={false}
+            shoulderPos={rightShoulderAbs}
           />
         </>
       )}
