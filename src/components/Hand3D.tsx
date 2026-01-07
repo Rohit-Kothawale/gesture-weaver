@@ -13,59 +13,39 @@ interface Hand3DProps {
 const Hand3D = ({ landmarks, color, glowColor, position = [0, 0, 0] }: Hand3DProps) => {
   const visible = isHandVisible(landmarks);
 
+  // Apply the reversal fixes and convert to Three.js Vectors
   const normalizedLandmarks = useMemo(() => {
     if (!visible) return [];
-
-    // Get raw normalized coordinates from your helper
-    const rawCoords = normalizeCoordinates(landmarks, 3);
-
-    // Convert to Three.js Vector3 and ensure Mirroring is handled
-    // point[0] is X, point[1] is Y, point[2] is Z
-    return rawCoords.map((point) => new THREE.Vector3(point[0], point[1], point[2]));
+    const coords = normalizeCoordinates(landmarks, 3);
+    return coords.map((p) => new THREE.Vector3(...p));
   }, [landmarks, visible]);
 
+  // Create the skeleton lines
   const linePoints = useMemo(() => {
     if (!visible || normalizedLandmarks.length === 0) return [];
-    return HAND_CONNECTIONS.map(([start, end]) => ({
-      start: normalizedLandmarks[start],
-      end: normalizedLandmarks[end],
-    }));
+    return HAND_CONNECTIONS.map(([start, end]) => [normalizedLandmarks[start], normalizedLandmarks[end]]);
   }, [normalizedLandmarks, visible]);
 
   if (!visible) return null;
 
   return (
     <group position={position}>
-      {/* Landmark spheres */}
+      {/* Draw Joints */}
       {normalizedLandmarks.map((pos, index) => (
         <mesh key={index} position={pos}>
           <sphereGeometry args={[0.04, 16, 16]} />
-          <meshStandardMaterial
-            color={color}
-            emissive={glowColor}
-            emissiveIntensity={0.5}
-            roughness={0.3}
-            metalness={0.7}
-          />
+          <meshStandardMaterial color={color} emissive={glowColor} emissiveIntensity={0.5} />
         </mesh>
       ))}
 
-      {/* Connection lines */}
-      {linePoints.map((line, index) => (
-        <Line
-          key={index}
-          // Passing Vector3 points directly fixes the "reversed" line rendering
-          points={[line.start, line.end]}
-          color={color}
-          lineWidth={2}
-          transparent
-          opacity={0.8}
-        />
+      {/* Draw Skeleton Lines */}
+      {linePoints.map((points, index) => (
+        <Line key={index} points={points} color={color} lineWidth={2} transparent opacity={0.7} />
       ))}
 
-      {/* Glow effect for fingertips (indices 4, 8, 12, 16, 20) */}
-      {[4, 8, 12, 16, 20].map((tipIndex) => (
-        <mesh key={`glow-${tipIndex}`} position={normalizedLandmarks[tipIndex]}>
+      {/* Fingertip Highlight */}
+      {[4, 8, 12, 16, 20].map((tip) => (
+        <mesh key={`glow-${tip}`} position={normalizedLandmarks[tip]}>
           <sphereGeometry args={[0.06, 16, 16]} />
           <meshBasicMaterial color={glowColor} transparent opacity={0.3} />
         </mesh>
