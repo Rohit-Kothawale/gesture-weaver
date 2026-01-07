@@ -1,12 +1,14 @@
-import { useEffect } from 'react';
-import { Hand } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Hand, User, Layers } from 'lucide-react';
 import HandVisualization from '@/components/HandVisualization';
+import AvatarVisualization from '@/components/AvatarVisualization';
 import FileUpload from '@/components/FileUpload';
 import AnimationControls from '@/components/AnimationControls';
 import StatusPanel from '@/components/StatusPanel';
 import { useSignAnimation } from '@/hooks/useSignAnimation';
 
 const Index = () => {
+  const [viewMode, setViewMode] = useState<'hands' | 'avatar'>('avatar');
   const {
     frames,
     currentFrame,
@@ -66,6 +68,34 @@ const Index = () => {
           </h2>
         </div>
 
+        {/* View Toggle */}
+        <div className="flex justify-center">
+          <div className="glass-panel p-1 inline-flex gap-1">
+            <button
+              onClick={() => setViewMode('avatar')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                viewMode === 'avatar'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+              }`}
+            >
+              <User className="w-4 h-4" />
+              Avatar
+            </button>
+            <button
+              onClick={() => setViewMode('hands')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                viewMode === 'hands'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+              }`}
+            >
+              <Layers className="w-4 h-4" />
+              Hands Only
+            </button>
+          </div>
+        </div>
+
         {/* Main Content */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* 3D Visualization */}
@@ -77,6 +107,8 @@ const Index = () => {
                   <p className="text-muted-foreground">Loading data...</p>
                 </div>
               </div>
+            ) : viewMode === 'avatar' ? (
+              <AvatarVisualization frame={currentFrameData} />
             ) : (
               <HandVisualization frame={currentFrameData} />
             )}
