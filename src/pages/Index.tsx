@@ -19,6 +19,7 @@ const Index = () => {
     reset,
     setFrame,
     fps,
+    setFps,
   } = useSignAnimation();
 
   const currentFrameData = frames[currentFrame] || null;
@@ -87,9 +88,11 @@ const Index = () => {
               isPlaying={isPlaying}
               currentFrame={currentFrame}
               totalFrames={frames.length}
+              fps={fps}
               onPlayPause={togglePlay}
               onReset={reset}
               onFrameChange={setFrame}
+              onFpsChange={setFps}
               disabled={frames.length === 0}
             />
 

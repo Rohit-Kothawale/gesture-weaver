@@ -1,13 +1,15 @@
-import { Play, Pause, RotateCcw, ChevronFirst, ChevronLast } from 'lucide-react';
+import { Play, Pause, RotateCcw, ChevronFirst, ChevronLast, Gauge } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 
 interface AnimationControlsProps {
   isPlaying: boolean;
   currentFrame: number;
   totalFrames: number;
+  fps: number;
   onPlayPause: () => void;
   onReset: () => void;
   onFrameChange: (frame: number) => void;
+  onFpsChange: (fps: number) => void;
   disabled?: boolean;
 }
 
@@ -15,9 +17,11 @@ const AnimationControls = ({
   isPlaying,
   currentFrame,
   totalFrames,
+  fps,
   onPlayPause,
   onReset,
   onFrameChange,
+  onFpsChange,
   disabled = false,
 }: AnimationControlsProps) => {
   return (
@@ -79,6 +83,30 @@ const AnimationControls = ({
         >
           <ChevronLast className="w-5 h-5" />
         </button>
+      </div>
+
+      {/* Speed Control */}
+      <div className="space-y-2 pt-2 border-t border-border/50">
+        <div className="flex items-center justify-between text-xs font-mono text-muted-foreground">
+          <div className="flex items-center gap-1.5">
+            <Gauge className="w-3.5 h-3.5" />
+            <span>Speed</span>
+          </div>
+          <span className="text-primary font-semibold">{fps} FPS</span>
+        </div>
+        <Slider
+          value={[fps]}
+          min={5}
+          max={30}
+          step={1}
+          onValueChange={([value]) => onFpsChange(value)}
+          disabled={disabled}
+          className="w-full"
+        />
+        <div className="flex justify-between text-[10px] text-muted-foreground/60">
+          <span>Slow</span>
+          <span>Fast</span>
+        </div>
       </div>
     </div>
   );
