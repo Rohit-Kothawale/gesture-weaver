@@ -1,7 +1,8 @@
+import { useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Grid, Environment, PerspectiveCamera } from '@react-three/drei';
 import Hand3D, { ArmSkeleton } from './Hand3D';
-import { HandFrame } from '@/types/hand-data';
+import { HandFrame, ArmLandmarks } from '@/types/hand-data';
 
 interface HandVisualizationProps {
   frame: HandFrame | null;
@@ -9,14 +10,38 @@ interface HandVisualizationProps {
 }
 
 // Helper to check if arm data is valid
-const isArmValid = (arm?: { shoulder: [number, number, number]; elbow: [number, number, number]; wrist: [number, number, number] }) => {
+const isArmValid = (arm?: ArmLandmarks) => {
   if (!arm) return false;
   return arm.shoulder.some(v => v !== 0) && arm.elbow.some(v => v !== 0);
+};
+
+// Convert arm wrist to 3D position for hand placement
+const getWristPosition = (arm: ArmLandmarks, scale = 3): [number, number, number] => {
+  return [
+    (arm.wrist[0] - 0.5) * scale,
+    (1 - arm.wrist[1] - 0.5) * scale,
+    -arm.wrist[2] * scale,
+  ];
 };
 
 const Scene = ({ frame, showArms = true }: HandVisualizationProps) => {
   const hasLeftArm = showArms && isArmValid(frame?.leftArm);
   const hasRightArm = showArms && isArmValid(frame?.rightArm);
+
+  // Calculate hand positions - use arm wrist when available, otherwise use fixed offset
+  const leftHandPosition = useMemo((): [number, number, number] => {
+    if (hasLeftArm && frame?.leftArm) {
+      return getWristPosition(frame.leftArm);
+    }
+    return [1.5, 0, 0]; // Default fixed position
+  }, [hasLeftArm, frame?.leftArm]);
+
+  const rightHandPosition = useMemo((): [number, number, number] => {
+    if (hasRightArm && frame?.rightArm) {
+      return getWristPosition(frame.rightArm);
+    }
+    return [-1.5, 0, 0]; // Default fixed position
+  }, [hasRightArm, frame?.rightArm]);
 
   return (
     <>
@@ -51,7 +76,7 @@ const Scene = ({ frame, showArms = true }: HandVisualizationProps) => {
         position={[0, -2, 0]}
       />
 
-      {/* Arms rendered at world position (not offset) */}
+      {/* Arms rendered at world position */}
       {hasLeftArm && frame?.leftArm && (
         <ArmSkeleton 
           armLandmarks={frame.leftArm} 
@@ -67,20 +92,20 @@ const Scene = ({ frame, showArms = true }: HandVisualizationProps) => {
         />
       )}
 
-      {/* Hands with fixed position offset for visibility */}
+      {/* Hands positioned at arm wrist (or fixed offset if no arm data) */}
       {frame && (
         <>
           <Hand3D
             landmarks={frame.leftHand}
             color="#00d4ff"
             glowColor="#00f0ff"
-            position={[1.5, 0, 0]}
+            position={leftHandPosition}
           />
           <Hand3D
             landmarks={frame.rightHand}
             color="#00ff88"
             glowColor="#00ffaa"
-            position={[-1.5, 0, 0]}
+            position={rightHandPosition}
           />
         </>
       )}
