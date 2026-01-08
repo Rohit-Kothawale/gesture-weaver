@@ -171,9 +171,10 @@ export const ArmSkeleton = ({
   scale = 3,
 }: ArmSkeletonProps) => {
   const positions = useMemo(() => {
+    // Coordinates are already mirrored in CameraCapture, so just center and scale
     const normalize = (coord: [number, number, number]) => new THREE.Vector3(
-      (1 - coord[0] - 0.5) * scale,
-      (1 - coord[1] - 0.5) * scale,
+      (coord[0] - 0.5) * scale,
+      (1 - coord[1] - 0.5) * scale,  // Flip Y to convert from screen coords to 3D
       -coord[2] * scale
     );
     
