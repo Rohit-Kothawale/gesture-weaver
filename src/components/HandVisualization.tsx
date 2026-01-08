@@ -5,9 +5,10 @@ import { HandFrame } from '@/types/hand-data';
 
 interface HandVisualizationProps {
   frame: HandFrame | null;
+  showArms?: boolean;
 }
 
-const Scene = ({ frame }: HandVisualizationProps) => {
+const Scene = ({ frame, showArms = true }: HandVisualizationProps) => {
   return (
     <>
       <PerspectiveCamera makeDefault position={[0, 0, 5]} fov={50} />
@@ -49,14 +50,14 @@ const Scene = ({ frame }: HandVisualizationProps) => {
             color="#00d4ff"
             glowColor="#00f0ff"
             position={[1.5, 0, 0]}
-            armLandmarks={frame.leftArm}
+            armLandmarks={showArms ? frame.leftArm : undefined}
           />
           <Hand3D
             landmarks={frame.rightHand}
             color="#00ff88"
             glowColor="#00ffaa"
             position={[-1.5, 0, 0]}
-            armLandmarks={frame.rightArm}
+            armLandmarks={showArms ? frame.rightArm : undefined}
           />
         </>
       )}
@@ -64,7 +65,7 @@ const Scene = ({ frame }: HandVisualizationProps) => {
   );
 };
 
-const HandVisualization = ({ frame }: HandVisualizationProps) => {
+const HandVisualization = ({ frame, showArms = true }: HandVisualizationProps) => {
   return (
     <div className="w-full h-full rounded-xl overflow-hidden glass-panel animate-pulse-glow">
       <Canvas
@@ -73,7 +74,7 @@ const HandVisualization = ({ frame }: HandVisualizationProps) => {
       >
         <color attach="background" args={['#0a0f14']} />
         <fog attach="fog" args={['#0a0f14', 5, 15]} />
-        <Scene frame={frame} />
+        <Scene frame={frame} showArms={showArms} />
       </Canvas>
     </div>
   );

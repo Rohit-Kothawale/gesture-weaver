@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Hand, User, Layers, Camera, Download } from 'lucide-react';
+import { Hand, User, Layers, Camera, Download, Bone } from 'lucide-react';
 import HandVisualization from '@/components/HandVisualization';
 import AvatarVisualization from '@/components/AvatarVisualization';
 import FileUpload from '@/components/FileUpload';
@@ -8,10 +8,12 @@ import AnimationControls from '@/components/AnimationControls';
 import StatusPanel from '@/components/StatusPanel';
 import { useSignAnimation } from '@/hooks/useSignAnimation';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 
 const Index = () => {
   const [viewMode, setViewMode] = useState<'hands' | 'avatar'>('avatar');
   const [showCamera, setShowCamera] = useState(false);
+  const [showArms, setShowArms] = useState(true);
   const {
     frames,
     currentFrame,
@@ -93,7 +95,7 @@ const Index = () => {
         </div>
 
         {/* View Toggle */}
-        <div className="flex justify-center">
+        <div className="flex justify-center items-center gap-4">
           <div className="glass-panel p-1 inline-flex gap-1">
             <button
               onClick={() => setViewMode('avatar')}
@@ -118,6 +120,18 @@ const Index = () => {
               Hands Only
             </button>
           </div>
+          
+          {/* Show Arms Toggle - only visible when in Hands Only view */}
+          {viewMode === 'hands' && (
+            <div className="glass-panel px-3 py-2 flex items-center gap-2">
+              <Bone className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">Arms</span>
+              <Switch
+                checked={showArms}
+                onCheckedChange={setShowArms}
+              />
+            </div>
+          )}
         </div>
 
         {/* Camera Capture Modal */}
@@ -148,7 +162,7 @@ const Index = () => {
             ) : viewMode === 'avatar' ? (
               <AvatarVisualization frame={currentFrameData} />
             ) : (
-              <HandVisualization frame={currentFrameData} />
+              <HandVisualization frame={currentFrameData} showArms={showArms} />
             )}
           </div>
 
