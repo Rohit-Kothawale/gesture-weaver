@@ -64,6 +64,7 @@ const FINGER_BONE_NAMES = {
 };
 
 // Calculate finger curl angle from landmarks
+// Uses the angle between finger segments to determine bend amount
 const calculateFingerCurl = (
   landmarks: [number, number, number][],
   fingerName: keyof typeof FINGER_LANDMARKS,
@@ -73,33 +74,43 @@ const calculateFingerCurl = (
   
   // Get the 4 points of the finger
   const p0 = new THREE.Vector3(...landmarks[indices[0]]); // Base (MCP)
-  const p1 = new THREE.Vector3(...landmarks[indices[1]]); // First joint
-  const p2 = new THREE.Vector3(...landmarks[indices[2]]); // Second joint
+  const p1 = new THREE.Vector3(...landmarks[indices[1]]); // First joint (PIP)
+  const p2 = new THREE.Vector3(...landmarks[indices[2]]); // Second joint (DIP)
   const p3 = new THREE.Vector3(...landmarks[indices[3]]); // Tip
   
-  // For reference, get wrist position
+  // Calculate vectors between consecutive joints
+  const v1 = new THREE.Vector3().subVectors(p1, p0).normalize(); // Base to first joint
+  const v2 = new THREE.Vector3().subVectors(p2, p1).normalize(); // First to second joint
+  const v3 = new THREE.Vector3().subVectors(p3, p2).normalize(); // Second to tip
+  
+  // For the proximal bone, we need to compare against a "straight" reference
+  // Use the direction from wrist to finger base as reference for "straight"
   const wrist = new THREE.Vector3(...landmarks[0]);
+  const middleMCP = new THREE.Vector3(...landmarks[9]); // Middle finger base as palm reference
+  const palmDirection = new THREE.Vector3().subVectors(middleMCP, wrist).normalize();
   
-  // Calculate vectors between joints
-  const v0 = new THREE.Vector3().subVectors(p0, wrist).normalize(); // Wrist to base
-  const v1 = new THREE.Vector3().subVectors(p1, p0).normalize();    // Base to first joint
-  const v2 = new THREE.Vector3().subVectors(p2, p1).normalize();    // First to second joint
-  const v3 = new THREE.Vector3().subVectors(p3, p2).normalize();    // Second to tip
+  // Calculate bend angles at each joint
+  // Angle between consecutive segments - smaller angle = more bent
+  const angle1 = Math.acos(THREE.MathUtils.clamp(v1.dot(v2), -1, 1)); // Angle at PIP joint
+  const angle2 = Math.acos(THREE.MathUtils.clamp(v2.dot(v3), -1, 1)); // Angle at DIP joint
   
-  // Calculate angles between consecutive segments (dot product -> angle)
-  // Clamp to avoid NaN from floating point errors
-  const angle1 = Math.acos(THREE.MathUtils.clamp(v0.dot(v1), -1, 1));
-  const angle2 = Math.acos(THREE.MathUtils.clamp(v1.dot(v2), -1, 1));
-  const angle3 = Math.acos(THREE.MathUtils.clamp(v2.dot(v3), -1, 1));
+  // For proximal, measure how much the first segment deviates from palm direction
+  const proximalAngle = Math.acos(THREE.MathUtils.clamp(palmDirection.dot(v1), -1, 1));
   
-  // Convert to curl (0 = straight, positive = curled)
-  // Scale and offset to get reasonable curl values
-  const curlScale = isThumb ? 1.2 : 1.5;
+  // Convert angles to curl rotations
+  // When finger is straight: angles are ~PI (180°), curl should be ~0
+  // When finger is bent: angles decrease, curl should increase
+  const curlScale = isThumb ? 1.0 : 1.2;
+  
+  // Debug logging (will show in console)
+  if (fingerName === 'index' && Math.random() < 0.02) {
+    console.log(`Finger ${fingerName}: proxAngle=${proximalAngle.toFixed(2)}, pipAngle=${angle1.toFixed(2)}, dipAngle=${angle2.toFixed(2)}`);
+  }
   
   return {
-    proximal: (Math.PI - angle1) * curlScale * 0.5,
-    intermediate: (Math.PI - angle2) * curlScale * 0.7,
-    distal: (Math.PI - angle3) * curlScale * 0.5,
+    proximal: proximalAngle * curlScale * 0.6,
+    intermediate: (Math.PI - angle1) * curlScale,
+    distal: (Math.PI - angle2) * curlScale * 0.8,
   };
 };
 
