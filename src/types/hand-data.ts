@@ -100,13 +100,13 @@ export const normalizeCoordinates = (landmarks: [number, number, number][], scal
   if (!landmarks || landmarks.length === 0) return [];
 
   return landmarks.map((point) => [
-    // 1. MIRROR FIX: Flip X so Right is Right
-    (1 - point[0] - 0.5) * scale,
+    // X: Already mirrored in CameraCapture, just center it
+    (point[0] - 0.5) * scale,
 
-    // 2. UPSIDE DOWN FIX: Flip Y so Up is Up
+    // Y: Flip so Up is Up
     (1 - point[1] - 0.5) * scale,
 
-    // 3. DEPTH: Keep Z as is (negative for Three.js depth)
+    // Z: Depth (negative for Three.js depth)
     -point[2] * scale,
   ]);
 };
