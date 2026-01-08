@@ -10,6 +10,7 @@ interface UseSignAnimationReturn {
   fileName: string | null;
   loadFile: (file: File) => void;
   loadFromUrl: (url: string) => void;
+  loadFrames: (frames: HandFrame[], name: string) => void;
   play: () => void;
   pause: () => void;
   togglePlay: () => void;
@@ -70,6 +71,13 @@ export const useSignAnimation = (): UseSignAnimationReturn => {
     setIsLoading(false);
   }, [parseCSV]);
 
+  const loadFrames = useCallback((newFrames: HandFrame[], name: string) => {
+    setFrames(newFrames);
+    setFileName(name);
+    setCurrentFrame(0);
+    setIsPlaying(true);
+  }, []);
+
   const play = useCallback(() => setIsPlaying(true), []);
   const pause = useCallback(() => setIsPlaying(false), []);
   const togglePlay = useCallback(() => setIsPlaying((p) => !p), []);
@@ -125,6 +133,7 @@ export const useSignAnimation = (): UseSignAnimationReturn => {
     fileName,
     loadFile,
     loadFromUrl,
+    loadFrames,
     play,
     pause,
     togglePlay,

@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
-import { Hand, User, Layers } from 'lucide-react';
+import { Hand, User, Layers, Camera } from 'lucide-react';
 import HandVisualization from '@/components/HandVisualization';
 import AvatarVisualization from '@/components/AvatarVisualization';
 import FileUpload from '@/components/FileUpload';
+import CameraCapture from '@/components/CameraCapture';
 import AnimationControls from '@/components/AnimationControls';
 import StatusPanel from '@/components/StatusPanel';
 import { useSignAnimation } from '@/hooks/useSignAnimation';
+import { Button } from '@/components/ui/button';
 
 const Index = () => {
   const [viewMode, setViewMode] = useState<'hands' | 'avatar'>('avatar');
+  const [showCamera, setShowCamera] = useState(false);
   const {
     frames,
     currentFrame,
@@ -17,6 +20,7 @@ const Index = () => {
     fileName,
     loadFile,
     loadFromUrl,
+    loadFrames,
     togglePlay,
     reset,
     setFrame,
@@ -51,11 +55,21 @@ const Index = () => {
             </div>
           </div>
 
-          <FileUpload
-            onFileUpload={loadFile}
-            hasData={frames.length > 0}
-            fileName={fileName || undefined}
-          />
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={() => setShowCamera(true)}
+              variant="outline"
+              className="flex items-center gap-2"
+            >
+              <Camera className="w-4 h-4" />
+              Capture
+            </Button>
+            <FileUpload
+              onFileUpload={loadFile}
+              hasData={frames.length > 0}
+              fileName={fileName || undefined}
+            />
+          </div>
         </header>
 
         {/* Current Label */}
@@ -95,6 +109,20 @@ const Index = () => {
             </button>
           </div>
         </div>
+
+        {/* Camera Capture Modal */}
+        {showCamera && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-2xl">
+              <CameraCapture
+                onFramesCaptured={(capturedFrames, label) => {
+                  loadFrames(capturedFrames, `${label}_captured.csv`);
+                }}
+                onClose={() => setShowCamera(false)}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Main Content */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
