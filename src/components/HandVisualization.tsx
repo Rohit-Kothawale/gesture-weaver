@@ -41,7 +41,7 @@ const Scene = ({ frame }: HandVisualizationProps) => {
         position={[0, -2, 0]}
       />
 
-      {/* Hands */}
+      {/* Hands with Arms */}
       {frame && (
         <>
           <Hand3D
@@ -49,12 +49,14 @@ const Scene = ({ frame }: HandVisualizationProps) => {
             color="#00d4ff"
             glowColor="#00f0ff"
             position={[1.5, 0, 0]}
+            armLandmarks={frame.leftArm}
           />
           <Hand3D
             landmarks={frame.rightHand}
             color="#00ff88"
             glowColor="#00ffaa"
             position={[-1.5, 0, 0]}
+            armLandmarks={frame.rightArm}
           />
         </>
       )}
