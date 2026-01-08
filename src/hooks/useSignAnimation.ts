@@ -18,6 +18,7 @@ interface UseSignAnimationReturn {
   setFrame: (frame: number) => void;
   fps: number;
   setFps: (fps: number) => void;
+  downloadCSV: () => void;
 }
 
 export const useSignAnimation = (): UseSignAnimationReturn => {
@@ -91,6 +92,55 @@ export const useSignAnimation = (): UseSignAnimationReturn => {
     setCurrentFrame(Math.max(0, Math.min(frame, frames.length - 1)));
   }, [frames.length]);
 
+  const downloadCSV = useCallback(() => {
+    if (frames.length === 0) return;
+
+    // Build CSV header
+    const headers = ['label'];
+    for (let i = 0; i < 21; i++) {
+      headers.push(`L_x${i}`, `L_y${i}`, `L_z${i}`);
+    }
+    for (let i = 0; i < 21; i++) {
+      headers.push(`R_x${i}`, `R_y${i}`, `R_z${i}`);
+    }
+
+    // Build CSV rows
+    const rows = frames.map(frame => {
+      const row: (string | number)[] = [frame.label];
+      
+      // Left hand landmarks
+      for (let i = 0; i < 21; i++) {
+        if (frame.leftHand && frame.leftHand[i]) {
+          row.push(frame.leftHand[i][0], frame.leftHand[i][1], frame.leftHand[i][2]);
+        } else {
+          row.push(0, 0, 0);
+        }
+      }
+      
+      // Right hand landmarks
+      for (let i = 0; i < 21; i++) {
+        if (frame.rightHand && frame.rightHand[i]) {
+          row.push(frame.rightHand[i][0], frame.rightHand[i][1], frame.rightHand[i][2]);
+        } else {
+          row.push(0, 0, 0);
+        }
+      }
+      
+      return row.join(',');
+    });
+
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName?.replace('.csv', '_export.csv') || 'hand_data_export.csv';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [frames, fileName]);
+
   // Animation loop
   useEffect(() => {
     if (!isPlaying || frames.length === 0) {
@@ -141,5 +191,6 @@ export const useSignAnimation = (): UseSignAnimationReturn => {
     setFrame,
     fps,
     setFps,
+    downloadCSV,
   };
 };

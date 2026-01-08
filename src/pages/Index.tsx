@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Hand, User, Layers, Camera } from 'lucide-react';
+import { Hand, User, Layers, Camera, Download } from 'lucide-react';
 import HandVisualization from '@/components/HandVisualization';
 import AvatarVisualization from '@/components/AvatarVisualization';
 import FileUpload from '@/components/FileUpload';
@@ -26,6 +26,7 @@ const Index = () => {
     setFrame,
     fps,
     setFps,
+    downloadCSV,
   } = useSignAnimation();
 
   const currentFrameData = frames[currentFrame] || null;
@@ -63,6 +64,15 @@ const Index = () => {
             >
               <Camera className="w-4 h-4" />
               Capture
+            </Button>
+            <Button
+              onClick={downloadCSV}
+              variant="outline"
+              className="flex items-center gap-2"
+              disabled={frames.length === 0}
+            >
+              <Download className="w-4 h-4" />
+              Download CSV
             </Button>
             <FileUpload
               onFileUpload={loadFile}
