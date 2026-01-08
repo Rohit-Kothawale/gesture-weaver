@@ -73,78 +73,76 @@ const MixamoAvatar = ({ frame }: Avatar3DProps) => {
     const lerp = 0.15;
     
     // LEFT ARM animation
-    // Raw landmarks: x, y, z in range 0-1
-    // x: 0 = right side of frame, 1 = left side
-    // y: 0 = top of frame, 1 = bottom
-    // For "Happy" sign: hands start low (y~0.9) and move up (y decreases)
+    // Coordinates after camera mirror fix: x 0=left, 1=right, y 0=top, 1=bottom
     if (isHandVisible(frame.leftHand)) {
-      const wrist = frame.leftHand[0]; // Raw wrist [x, y, z]
+      const wrist = frame.leftHand[0];
       const middleFinger = frame.leftHand[9];
       
-      // Convert raw coords to arm movements
-      // Y: 0.9 = hands down (arms down), 0.3 = hands up (arms raised)
-      // Map Y position to arm raise angle
-      // When y is high (~0.9), arm should be down. When y is low (~0.3), arm should be raised
-      const armRaise = (1.0 - wrist[1]) * 2.5 - 0.5; // Higher Y = lower arm
+      // Y position controls arm raise: y=1 (bottom) = arm down, y=0 (top) = arm up
+      const yNorm = 1.0 - wrist[1]; // Invert so 0=down, 1=up
+      const armRaise = yNorm * Math.PI * 0.7 - 0.3; // Map to rotation range
       
-      // X position: how far from body center
-      // Left hand x ~0.6 means it's toward the left side
-      const armSpread = (wrist[0] - 0.5) * 1.5 + 0.5; // Spread based on X
+      // X position controls spread: for left hand, x closer to 0 = arm closer to body
+      // x closer to 0.5+ = arm spread out
+      const xNorm = wrist[0]; // 0=left edge, 0.5=center, 1=right edge  
+      const armSpread = (0.5 - xNorm) * Math.PI * 0.5; // Spread outward for left arm
       
-      // Forward/back from Z
-      const armForward = wrist[2] * 0.5;
+      // Z controls forward/back tilt
+      const armForward = wrist[2] * 0.3;
       
       if (bones.leftArm) {
         bones.leftArm.rotation.x = THREE.MathUtils.lerp(bones.leftArm.rotation.x, -armRaise, lerp);
-        bones.leftArm.rotation.z = THREE.MathUtils.lerp(bones.leftArm.rotation.z, armSpread, lerp);
+        bones.leftArm.rotation.z = THREE.MathUtils.lerp(bones.leftArm.rotation.z, armSpread + 0.3, lerp);
         bones.leftArm.rotation.y = THREE.MathUtils.lerp(bones.leftArm.rotation.y, armForward, lerp);
       }
       
-      // Elbow bend - bend more when arm is raised
+      // Elbow naturally bends when arm is raised
       if (bones.leftForeArm) {
-        const elbowBend = Math.max(0, armRaise * 0.6);
+        const elbowBend = Math.max(0, yNorm * 0.8);
         bones.leftForeArm.rotation.x = THREE.MathUtils.lerp(bones.leftForeArm.rotation.x, -elbowBend, lerp);
       }
       
-      // Hand/wrist rotation based on finger direction
+      // Wrist rotation based on finger direction
       if (bones.leftHand && middleFinger) {
-        const handDirY = (middleFinger[1] - wrist[1]) * 3;
-        const handDirX = (middleFinger[0] - wrist[0]) * 3;
-        bones.leftHand.rotation.x = THREE.MathUtils.lerp(bones.leftHand.rotation.x, -handDirY, lerp);
-        bones.leftHand.rotation.z = THREE.MathUtils.lerp(bones.leftHand.rotation.z, handDirX, lerp);
+        const handTiltX = (middleFinger[1] - wrist[1]) * 2;
+        const handTiltZ = (middleFinger[0] - wrist[0]) * 2;
+        bones.leftHand.rotation.x = THREE.MathUtils.lerp(bones.leftHand.rotation.x, -handTiltX, lerp);
+        bones.leftHand.rotation.z = THREE.MathUtils.lerp(bones.leftHand.rotation.z, handTiltZ, lerp);
       }
     }
     
-    // RIGHT ARM animation
+    // RIGHT ARM animation (mirror of left arm logic)
     if (isHandVisible(frame.rightHand)) {
       const wrist = frame.rightHand[0];
       const middleFinger = frame.rightHand[9];
       
-      // Same Y mapping for arm raise
-      const armRaise = (1.0 - wrist[1]) * 2.5 - 0.5;
+      // Y position controls arm raise
+      const yNorm = 1.0 - wrist[1];
+      const armRaise = yNorm * Math.PI * 0.7 - 0.3;
       
-      // X position - right hand x ~0.4 means it's toward the right side
-      // Negative spread for right arm (mirrors left arm)
-      const armSpread = -(0.5 - wrist[0]) * 1.5 - 0.5;
+      // X position: for right hand, x closer to 1 = arm closer to body
+      // x closer to 0.5- = arm spread out
+      const xNorm = wrist[0];
+      const armSpread = (xNorm - 0.5) * Math.PI * 0.5; // Spread outward for right arm (negative Z)
       
-      const armForward = -wrist[2] * 0.5;
+      const armForward = -wrist[2] * 0.3;
       
       if (bones.rightArm) {
         bones.rightArm.rotation.x = THREE.MathUtils.lerp(bones.rightArm.rotation.x, -armRaise, lerp);
-        bones.rightArm.rotation.z = THREE.MathUtils.lerp(bones.rightArm.rotation.z, armSpread, lerp);
+        bones.rightArm.rotation.z = THREE.MathUtils.lerp(bones.rightArm.rotation.z, -armSpread - 0.3, lerp);
         bones.rightArm.rotation.y = THREE.MathUtils.lerp(bones.rightArm.rotation.y, armForward, lerp);
       }
       
       if (bones.rightForeArm) {
-        const elbowBend = Math.max(0, armRaise * 0.6);
+        const elbowBend = Math.max(0, yNorm * 0.8);
         bones.rightForeArm.rotation.x = THREE.MathUtils.lerp(bones.rightForeArm.rotation.x, -elbowBend, lerp);
       }
       
       if (bones.rightHand && middleFinger) {
-        const handDirY = (middleFinger[1] - wrist[1]) * 3;
-        const handDirX = (middleFinger[0] - wrist[0]) * 3;
-        bones.rightHand.rotation.x = THREE.MathUtils.lerp(bones.rightHand.rotation.x, -handDirY, lerp);
-        bones.rightHand.rotation.z = THREE.MathUtils.lerp(bones.rightHand.rotation.z, -handDirX, lerp);
+        const handTiltX = (middleFinger[1] - wrist[1]) * 2;
+        const handTiltZ = (middleFinger[0] - wrist[0]) * 2;
+        bones.rightHand.rotation.x = THREE.MathUtils.lerp(bones.rightHand.rotation.x, -handTiltX, lerp);
+        bones.rightHand.rotation.z = THREE.MathUtils.lerp(bones.rightHand.rotation.z, -handTiltZ, lerp);
       }
     }
   });

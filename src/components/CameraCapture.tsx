@@ -148,14 +148,18 @@ const CameraCapture = ({ onFramesCaptured, onClose }: CameraCaptureProps) => {
           ctx.stroke();
         });
 
-        // Store landmarks - Note: Camera is mirrored, so Left appears on right side
+        // Store landmarks with X mirrored to match avatar perspective
+        // Camera shows mirror image, so we flip X to correct orientation
         const landmarkData: [number, number, number][] = landmarks.map((lm: any) => [
-          lm.x,
+          1.0 - lm.x, // Mirror X so movements match avatar
           lm.y,
           lm.z
         ]);
 
-        // MediaPipe labels are from the camera's perspective (mirrored)
+        // After mirroring X, assign hands correctly:
+        // Your left hand appears on the right side of mirrored camera
+        // MediaPipe sees it as "Right" from camera's perspective
+        // After X flip, it should be assigned to leftHand
         if (handedness === 'Right') {
           leftHandLandmarks = landmarkData;
         } else {
