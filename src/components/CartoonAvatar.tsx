@@ -19,8 +19,10 @@ const BODY = {
   lowerLegLength: 0.28,
   jointRadius: 0.04,
   limbRadius: 0.03,
-  handRadius: 0.06,
+  handRadius: 0.04,
   footLength: 0.12,
+  fingerRadius: 0.008,
+  fingerJointRadius: 0.01,
 };
 
 // Colors
@@ -30,6 +32,16 @@ const COLORS = {
   pants: "#2d5a87",
   shoes: "#333333",
   joint: "#f0d0c0",
+  fingerTip: "#f5c4b8",
+};
+
+// Finger segment connections (landmark indices)
+const FINGER_SEGMENTS = {
+  thumb: [[0, 1], [1, 2], [2, 3], [3, 4]],
+  index: [[0, 5], [5, 6], [6, 7], [7, 8]],
+  middle: [[0, 9], [9, 10], [10, 11], [11, 12]],
+  ring: [[0, 13], [13, 14], [14, 15], [15, 16]],
+  pinky: [[0, 17], [17, 18], [18, 19], [19, 20]],
 };
 
 // Cylinder component for limbs
@@ -47,6 +59,8 @@ const Limb = ({
   const { position, quaternion, length } = useMemo(() => {
     const direction = new THREE.Vector3().subVectors(end, start);
     const length = direction.length();
+    if (length < 0.001) return { position: start, quaternion: new THREE.Quaternion(), length: 0 };
+    
     const center = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
     
     const quaternion = new THREE.Quaternion();
@@ -56,9 +70,11 @@ const Limb = ({
     return { position: center, quaternion, length };
   }, [start, end]);
 
+  if (length < 0.001) return null;
+
   return (
     <mesh position={position} quaternion={quaternion}>
-      <cylinderGeometry args={[radius, radius, length, 12]} />
+      <cylinderGeometry args={[radius, radius, length, 8]} />
       <meshStandardMaterial color={color} roughness={0.6} metalness={0.1} />
     </mesh>
   );
@@ -75,10 +91,152 @@ const Joint = ({
   color?: string;
 }) => (
   <mesh position={position}>
-    <sphereGeometry args={[radius, 16, 16]} />
+    <sphereGeometry args={[radius, 12, 12]} />
     <meshStandardMaterial color={color} roughness={0.5} metalness={0.1} />
   </mesh>
 );
+
+// Finger component that renders all segments of a finger
+const Finger = ({
+  landmarks,
+  segments,
+  wristPos,
+  handScale,
+  color,
+}: {
+  landmarks: THREE.Vector3[];
+  segments: number[][];
+  wristPos: THREE.Vector3;
+  handScale: number;
+  color: string;
+}) => {
+  return (
+    <>
+      {segments.slice(1).map(([start, end], idx) => {
+        const startPos = landmarks[start];
+        const endPos = landmarks[end];
+        if (!startPos || !endPos) return null;
+        
+        // Taper the finger radius from base to tip
+        const taperFactor = 1 - (idx * 0.15);
+        const radius = BODY.fingerRadius * handScale * taperFactor;
+        
+        return (
+          <group key={`seg-${start}-${end}`}>
+            <Limb start={startPos} end={endPos} radius={radius} color={color} />
+            <Joint position={startPos} radius={BODY.fingerJointRadius * handScale} color={color} />
+          </group>
+        );
+      })}
+      {/* Fingertip */}
+      {landmarks[segments[segments.length - 1][1]] && (
+        <Joint 
+          position={landmarks[segments[segments.length - 1][1]]} 
+          radius={BODY.fingerJointRadius * handScale * 0.8} 
+          color={COLORS.fingerTip} 
+        />
+      )}
+    </>
+  );
+};
+
+// Hand with fingers component
+const HandWithFingers = ({
+  landmarks,
+  wristPos,
+  isVisible,
+}: {
+  landmarks: [number, number, number][] | null;
+  wristPos: THREE.Vector3;
+  isVisible: boolean;
+}) => {
+  const fingerData = useMemo(() => {
+    if (!isVisible || !landmarks || landmarks.length < 21) {
+      return null;
+    }
+
+    // Convert landmarks to 3D vectors relative to wrist position
+    const handScale = 0.4; // Scale down the hand to fit the avatar
+    
+    // Calculate the center of the hand (wrist) for offset
+    const wristLandmark = landmarks[0];
+    
+    // Transform landmarks to be relative to the avatar's wrist position
+    const transformedLandmarks = landmarks.map((lm) => {
+      // Get relative position from wrist landmark
+      const relX = (lm[0] - wristLandmark[0]) * handScale;
+      const relY = -(lm[1] - wristLandmark[1]) * handScale; // Flip Y
+      const relZ = -(lm[2] - wristLandmark[2]) * handScale;
+      
+      return new THREE.Vector3(
+        wristPos.x + relX,
+        wristPos.y + relY,
+        wristPos.z + relZ
+      );
+    });
+
+    return {
+      landmarks: transformedLandmarks,
+      handScale,
+    };
+  }, [landmarks, wristPos, isVisible]);
+
+  if (!fingerData) {
+    // Show simple hand sphere when no landmark data
+    return (
+      <mesh position={wristPos}>
+        <sphereGeometry args={[BODY.handRadius, 16, 16]} />
+        <meshStandardMaterial color={COLORS.skin} roughness={0.5} metalness={0.1} />
+      </mesh>
+    );
+  }
+
+  const { landmarks: lms, handScale } = fingerData;
+
+  return (
+    <group>
+      {/* Palm sphere */}
+      <Joint position={wristPos} radius={BODY.handRadius * 0.7} color={COLORS.skin} />
+      
+      {/* Fingers */}
+      <Finger 
+        landmarks={lms} 
+        segments={FINGER_SEGMENTS.thumb} 
+        wristPos={wristPos} 
+        handScale={handScale} 
+        color={COLORS.skin} 
+      />
+      <Finger 
+        landmarks={lms} 
+        segments={FINGER_SEGMENTS.index} 
+        wristPos={wristPos} 
+        handScale={handScale} 
+        color={COLORS.skin} 
+      />
+      <Finger 
+        landmarks={lms} 
+        segments={FINGER_SEGMENTS.middle} 
+        wristPos={wristPos} 
+        handScale={handScale} 
+        color={COLORS.skin} 
+      />
+      <Finger 
+        landmarks={lms} 
+        segments={FINGER_SEGMENTS.ring} 
+        wristPos={wristPos} 
+        handScale={handScale} 
+        color={COLORS.skin} 
+      />
+      <Finger 
+        landmarks={lms} 
+        segments={FINGER_SEGMENTS.pinky} 
+        wristPos={wristPos} 
+        handScale={handScale} 
+        color={COLORS.skin} 
+      />
+    </group>
+  );
+};
 
 // Normalize landmarks for positioning
 const normalizeLandmarks = (
@@ -96,25 +254,6 @@ const normalizeLandmarks = (
   const z = 0.25 + Math.max(0, -wrist[2]) * 0.15;
   
   return new THREE.Vector3(x, y, z);
-};
-
-// Calculate hand orientation from landmarks
-const getHandOrientation = (landmarks: [number, number, number][]): THREE.Quaternion => {
-  if (!landmarks || landmarks.length < 21) return new THREE.Quaternion();
-  
-  const wrist = new THREE.Vector3(...landmarks[0]);
-  const middleMCP = new THREE.Vector3(...landmarks[9]);
-  const indexMCP = new THREE.Vector3(...landmarks[5]);
-  const pinkyMCP = new THREE.Vector3(...landmarks[17]);
-  
-  const forward = new THREE.Vector3().subVectors(middleMCP, wrist).normalize();
-  const side = new THREE.Vector3().subVectors(indexMCP, pinkyMCP).normalize();
-  const up = new THREE.Vector3().crossVectors(forward, side).normalize();
-  
-  const matrix = new THREE.Matrix4();
-  matrix.makeBasis(side, forward, up);
-  
-  return new THREE.Quaternion().setFromRotationMatrix(matrix);
 };
 
 const CartoonAvatar = ({ frame }: CartoonAvatarProps) => {
@@ -140,21 +279,17 @@ const CartoonAvatar = ({ frame }: CartoonAvatarProps) => {
     
     if (leftHandVisible && frame?.leftHand) {
       const handPos = normalizeLandmarks(frame.leftHand, 1.2);
-      // Offset hand position relative to body
-      handPos.y += 0.1; // Adjust for body center
+      handPos.y += 0.1;
       
-      // Calculate elbow position using simple IK
       const shoulderToHand = new THREE.Vector3().subVectors(handPos, defaultLeft.shoulder);
       const dist = shoulderToHand.length();
       const armLength = BODY.upperArmLength + BODY.forearmLength;
       
       if (dist < armLength) {
         const mid = new THREE.Vector3().addVectors(defaultLeft.shoulder, handPos).multiplyScalar(0.5);
-        // Push elbow outward
         const elbowOffset = new THREE.Vector3(-0.1, 0, 0.15);
         left.elbow = mid.add(elbowOffset);
       } else {
-        // Arm stretched - elbow between shoulder and hand
         left.elbow = new THREE.Vector3().lerpVectors(defaultLeft.shoulder, handPos, 0.5);
         left.elbow.z += 0.1;
       }
@@ -195,20 +330,12 @@ const CartoonAvatar = ({ frame }: CartoonAvatarProps) => {
       neckBottom: new THREE.Vector3(0, BODY.torsoLength, 0),
       torsoTop: new THREE.Vector3(0, BODY.torsoLength, 0),
       torsoBottom: new THREE.Vector3(0, hipY, 0),
-      
-      // Hips
       leftHip: new THREE.Vector3(-BODY.hipWidth * 0.5, hipY, 0),
       rightHip: new THREE.Vector3(BODY.hipWidth * 0.5, hipY, 0),
-      
-      // Knees
       leftKnee: new THREE.Vector3(-BODY.hipWidth * 0.5, hipY - BODY.upperLegLength, 0.02),
       rightKnee: new THREE.Vector3(BODY.hipWidth * 0.5, hipY - BODY.upperLegLength, 0.02),
-      
-      // Ankles
       leftAnkle: new THREE.Vector3(-BODY.hipWidth * 0.5, hipY - BODY.upperLegLength - BODY.lowerLegLength, 0),
       rightAnkle: new THREE.Vector3(BODY.hipWidth * 0.5, hipY - BODY.upperLegLength - BODY.lowerLegLength, 0),
-      
-      // Feet
       leftFoot: new THREE.Vector3(-BODY.hipWidth * 0.5, hipY - BODY.upperLegLength - BODY.lowerLegLength - 0.02, BODY.footLength * 0.3),
       rightFoot: new THREE.Vector3(BODY.hipWidth * 0.5, hipY - BODY.upperLegLength - BODY.lowerLegLength - 0.02, BODY.footLength * 0.3),
     };
@@ -244,7 +371,7 @@ const CartoonAvatar = ({ frame }: CartoonAvatarProps) => {
       {/* Torso */}
       <Limb start={positions.torsoBottom} end={positions.torsoTop} radius={0.08} color={COLORS.body} />
       
-      {/* Shoulders joint */}
+      {/* Shoulders */}
       <Joint position={armPositions.left.shoulder} color={COLORS.body} />
       <Joint position={armPositions.right.shoulder} color={COLORS.body} />
       
@@ -253,22 +380,24 @@ const CartoonAvatar = ({ frame }: CartoonAvatarProps) => {
       <Joint position={armPositions.left.elbow} color={COLORS.joint} />
       <Limb start={armPositions.left.elbow} end={armPositions.left.wrist} color={COLORS.skin} />
       
-      {/* Left Hand */}
-      <mesh position={armPositions.left.wrist}>
-        <sphereGeometry args={[BODY.handRadius, 16, 16]} />
-        <meshStandardMaterial color={COLORS.skin} roughness={0.5} metalness={0.1} />
-      </mesh>
+      {/* Left Hand with Fingers */}
+      <HandWithFingers 
+        landmarks={frame?.leftHand || null}
+        wristPos={armPositions.left.wrist}
+        isVisible={leftHandVisible}
+      />
       
       {/* Right Arm */}
       <Limb start={armPositions.right.shoulder} end={armPositions.right.elbow} color={COLORS.body} />
       <Joint position={armPositions.right.elbow} color={COLORS.joint} />
       <Limb start={armPositions.right.elbow} end={armPositions.right.wrist} color={COLORS.skin} />
       
-      {/* Right Hand */}
-      <mesh position={armPositions.right.wrist}>
-        <sphereGeometry args={[BODY.handRadius, 16, 16]} />
-        <meshStandardMaterial color={COLORS.skin} roughness={0.5} metalness={0.1} />
-      </mesh>
+      {/* Right Hand with Fingers */}
+      <HandWithFingers 
+        landmarks={frame?.rightHand || null}
+        wristPos={armPositions.right.wrist}
+        isVisible={rightHandVisible}
+      />
       
       {/* Hips */}
       <Joint position={positions.leftHip} color={COLORS.pants} />
