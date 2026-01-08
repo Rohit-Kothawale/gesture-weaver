@@ -58,18 +58,64 @@ const calculateHandPose = (landmarks: [number, number, number][]) => {
   };
 };
 
-// Convert normalized coordinates to 3D world position
-// MUST match the normalizeCoordinates function in hand-data.ts for consistency
-const landmarkTo3D = (x: number, y: number, z: number, scale: number = 1.5): THREE.Vector3 => {
-  // Match the Hand3D normalizeCoordinates transform:
-  // X: mirror and center (1 - x - 0.5)
-  // Y: flip and center (1 - y - 0.5)  
-  // Z: negative depth
-  return new THREE.Vector3(
-    (1 - x - 0.5) * scale,   // Same as Hand3D: mirror X
-    (1 - y - 0.5) * scale,   // Same as Hand3D: flip Y
-    -z * scale * 0.3         // Same direction as Hand3D, scaled down
-  );
+// Calculate palm size for scale normalization
+const calculatePalmSize = (landmarks: [number, number, number][]): number => {
+  const wrist = new THREE.Vector3(landmarks[0][0], landmarks[0][1], landmarks[0][2]);
+  const middleMCP = new THREE.Vector3(landmarks[9][0], landmarks[9][1], landmarks[9][2]);
+  return wrist.distanceTo(middleMCP);
+};
+
+// Estimate shoulder position based on hand position and typical arm proportions
+const estimateShoulderPosition = (
+  wristPos: [number, number, number],
+  isLeftHand: boolean,
+  palmSize: number
+): THREE.Vector3 => {
+  // Typical arm length is roughly 10-12x palm size
+  // Shoulder is above and to the side of wrist
+  const armLength = palmSize * 10;
+  
+  // Estimate shoulder: above wrist, offset to side, and slightly back
+  const shoulderX = isLeftHand 
+    ? wristPos[0] + armLength * 0.3  // Left shoulder is to the right of left hand
+    : wristPos[0] - armLength * 0.3; // Right shoulder is to the left of right hand
+  const shoulderY = wristPos[1] - armLength * 0.4; // Shoulder above wrist (lower Y = higher in image)
+  const shoulderZ = wristPos[2] + 0.1; // Shoulder slightly behind
+  
+  return new THREE.Vector3(shoulderX, shoulderY, shoulderZ);
+};
+
+// Calculate relative hand position from estimated shoulder
+const calculateRelativeHandPosition = (
+  landmarks: [number, number, number][],
+  isLeftHand: boolean
+): { relativePos: THREE.Vector3; palmSize: number } => {
+  const wrist = landmarks[0];
+  const palmSize = calculatePalmSize(landmarks);
+  
+  // Estimate where shoulder would be
+  const estimatedShoulder = estimateShoulderPosition(wrist, isLeftHand, palmSize);
+  
+  // Calculate wrist position relative to estimated shoulder
+  const wristPos = new THREE.Vector3(wrist[0], wrist[1], wrist[2]);
+  const relativePos = new THREE.Vector3().subVectors(wristPos, estimatedShoulder);
+  
+  // Normalize by palm size to get scale-independent position
+  // Then scale to avatar proportions
+  const normalizedRelative = relativePos.multiplyScalar(1 / palmSize);
+  
+  // Convert to avatar coordinate system:
+  // Camera X (right) -> Avatar X (mirrored)
+  // Camera Y (down) -> Avatar Y (up)
+  // Camera Z (toward camera) -> Avatar Z (forward)
+  return {
+    relativePos: new THREE.Vector3(
+      -normalizedRelative.x * 0.15,  // Mirror X, scale to avatar arm reach
+      -normalizedRelative.y * 0.15,  // Flip Y
+      -normalizedRelative.z * 0.1    // Z depth
+    ),
+    palmSize
+  };
 };
 
 // Simple IK solver for arm (shoulder -> elbow -> wrist)
@@ -189,10 +235,13 @@ const MixamoAvatar = ({ frame }: Avatar3DProps) => {
     // LEFT ARM
     if (frame && isHandVisible(frame.leftHand)) {
       const pose = calculateHandPose(frame.leftHand);
-      const wrist = frame.leftHand[0];
       
-      // Convert wrist position to 3D target
-      const targetPos = landmarkTo3D(wrist[0], wrist[1], wrist[2], 1.5);
+      // Calculate relative hand position from estimated shoulder
+      const { relativePos } = calculateRelativeHandPosition(frame.leftHand, true);
+      
+      // Target position for IK: shoulder position + relative offset
+      const shoulderPos = new THREE.Vector3(-0.15, 0.3, 0);
+      const targetPos = new THREE.Vector3().addVectors(shoulderPos, relativePos);
       
       // Solve IK for arm
       const ik = solveArmIK(targetPos, true);
@@ -258,10 +307,13 @@ const MixamoAvatar = ({ frame }: Avatar3DProps) => {
     // RIGHT ARM
     if (frame && isHandVisible(frame.rightHand)) {
       const pose = calculateHandPose(frame.rightHand);
-      const wrist = frame.rightHand[0];
       
-      // Convert wrist position to 3D target
-      const targetPos = landmarkTo3D(wrist[0], wrist[1], wrist[2], 1.5);
+      // Calculate relative hand position from estimated shoulder
+      const { relativePos } = calculateRelativeHandPosition(frame.rightHand, false);
+      
+      // Target position for IK: shoulder position + relative offset
+      const shoulderPos = new THREE.Vector3(0.15, 0.3, 0);
+      const targetPos = new THREE.Vector3().addVectors(shoulderPos, relativePos);
       
       // Solve IK for arm
       const ik = solveArmIK(targetPos, false);
