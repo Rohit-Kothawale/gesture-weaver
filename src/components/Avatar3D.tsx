@@ -59,13 +59,16 @@ const calculateHandPose = (landmarks: [number, number, number][]) => {
 };
 
 // Convert normalized coordinates to 3D world position
-const landmarkTo3D = (x: number, y: number, z: number, scale: number = 2): THREE.Vector3 => {
-  // x: 0-1 (left to right), y: 0-1 (top to bottom), z: depth (negative = closer to camera)
-  // Avatar faces toward positive Z (toward camera), so hand in front = positive Z
+// MUST match the normalizeCoordinates function in hand-data.ts for consistency
+const landmarkTo3D = (x: number, y: number, z: number, scale: number = 1.5): THREE.Vector3 => {
+  // Match the Hand3D normalizeCoordinates transform:
+  // X: mirror and center (1 - x - 0.5)
+  // Y: flip and center (1 - y - 0.5)  
+  // Z: negative depth
   return new THREE.Vector3(
-    (x - 0.5) * scale,      // x: -1 to 1 (left to right)
-    -(y - 0.5) * scale,     // y: flip so up is positive
-    z * scale + 0.5         // z: positive = in front of body (toward camera)
+    (1 - x - 0.5) * scale,   // Same as Hand3D: mirror X
+    (1 - y - 0.5) * scale,   // Same as Hand3D: flip Y
+    -z * scale * 0.3         // Same direction as Hand3D, scaled down
   );
 };
 
@@ -73,9 +76,10 @@ const landmarkTo3D = (x: number, y: number, z: number, scale: number = 2): THREE
 const solveArmIK = (
   targetPos: THREE.Vector3,
   isLeftArm: boolean,
-  shoulderPos: THREE.Vector3 = new THREE.Vector3(isLeftArm ? -0.2 : 0.2, 0.8, 0),
-  upperArmLength: number = 0.4,
-  forearmLength: number = 0.35
+  // Shoulder positions adjusted for avatar scale
+  shoulderPos: THREE.Vector3 = new THREE.Vector3(isLeftArm ? -0.15 : 0.15, 0.3, 0),
+  upperArmLength: number = 0.35,
+  forearmLength: number = 0.30
 ) => {
   // Direction from shoulder to target
   const toTarget = new THREE.Vector3().subVectors(targetPos, shoulderPos);
@@ -99,21 +103,23 @@ const solveArmIK = (
     / (2 * upperArmLength * clampedDistance);
   const shoulderOffset = Math.acos(THREE.MathUtils.clamp(cosShoulder, -1, 1));
   
-  // Calculate rotation angles
-  // Shoulder rotation to point toward target
-  // Avatar faces +Z, so forward movement is in +Z direction
-  const shoulderPitch = Math.atan2(-direction.y, Math.sqrt(direction.x * direction.x + direction.z * direction.z));
-  const shoulderYaw = Math.atan2(direction.x, direction.z); // Changed: positive Z is forward
+  // Calculate rotation angles based on direction to target
+  // X rotation (pitch): arm up/down
+  // Y rotation (yaw): arm forward/back twist
+  // Z rotation (roll): arm spread in/out from body
   
-  // Arm spread (rotation around local Z)
+  const armPitch = Math.asin(THREE.MathUtils.clamp(-direction.y, -1, 1)); // Negative Y = arm up
+  const armYaw = Math.atan2(-direction.z, Math.abs(direction.x) + 0.01); // Z controls forward
+  
+  // Arm spread based on X direction
   const armSpread = isLeftArm 
-    ? Math.atan2(direction.x, -direction.y) + Math.PI * 0.5
-    : Math.atan2(-direction.x, -direction.y) - Math.PI * 0.5;
+    ? Math.atan2(-direction.x, -direction.y) + Math.PI * 0.5  // Left arm spreads with negative X
+    : Math.atan2(direction.x, -direction.y) - Math.PI * 0.5;  // Right arm spreads with positive X
   
   return {
-    shoulderRotation: {
-      x: shoulderPitch - shoulderOffset,
-      y: shoulderYaw * 0.3,
+    armRotation: {
+      x: armPitch - shoulderOffset * 0.5,
+      y: armYaw * 0.5,
       z: armSpread
     },
     elbowBend: Math.PI - elbowAngle,
@@ -193,17 +199,17 @@ const MixamoAvatar = ({ frame }: Avatar3DProps) => {
       if (bones.leftArm) {
         bones.leftArm.rotation.x = THREE.MathUtils.lerp(
           bones.leftArm.rotation.x, 
-          ik.shoulderRotation.x, 
+          ik.armRotation.x, 
           lerp
         );
         bones.leftArm.rotation.z = THREE.MathUtils.lerp(
           bones.leftArm.rotation.z, 
-          ik.shoulderRotation.z, 
+          ik.armRotation.z, 
           lerp
         );
         bones.leftArm.rotation.y = THREE.MathUtils.lerp(
           bones.leftArm.rotation.y, 
-          ik.shoulderRotation.y, 
+          ik.armRotation.y, 
           lerp
         );
       }
@@ -262,17 +268,17 @@ const MixamoAvatar = ({ frame }: Avatar3DProps) => {
       if (bones.rightArm) {
         bones.rightArm.rotation.x = THREE.MathUtils.lerp(
           bones.rightArm.rotation.x, 
-          ik.shoulderRotation.x, 
+          ik.armRotation.x, 
           lerp
         );
         bones.rightArm.rotation.z = THREE.MathUtils.lerp(
           bones.rightArm.rotation.z, 
-          -ik.shoulderRotation.z, 
+          -ik.armRotation.z, 
           lerp
         );
         bones.rightArm.rotation.y = THREE.MathUtils.lerp(
           bones.rightArm.rotation.y, 
-          -ik.shoulderRotation.y, 
+          -ik.armRotation.y, 
           lerp
         );
       }
