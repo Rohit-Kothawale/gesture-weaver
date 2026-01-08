@@ -66,19 +66,26 @@ const CameraCapture = ({ onFramesCaptured, onClose }: CameraCaptureProps) => {
   useEffect(() => {
     const loadMediaPipe = async () => {
       try {
-        // Try to load Holistic for full body tracking
-        // @ts-ignore - MediaPipe is loaded dynamically
-        const { Holistic } = await import('@mediapipe/holistic');
+        // Load Holistic from CDN for full body tracking
+        const holisticModule = await import('@mediapipe/holistic');
+        const HolisticClass = holisticModule.Holistic || (holisticModule as any).default?.Holistic;
         
-        const holistic = new Holistic({
+        if (!HolisticClass) {
+          throw new Error('Holistic class not found in module');
+        }
+        
+        const holistic = new HolisticClass({
           locateFile: (file: string) => {
-            return `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`;
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/holistic@0.5.1675471629/${file}`;
           }
         });
 
         holistic.setOptions({
           modelComplexity: 1,
           smoothLandmarks: true,
+          enableSegmentation: false,
+          smoothSegmentation: false,
+          refineFaceLandmarks: false,
           minDetectionConfidence: 0.5,
           minTrackingConfidence: 0.5
         });
@@ -88,15 +95,20 @@ const CameraCapture = ({ onFramesCaptured, onClose }: CameraCaptureProps) => {
         });
 
         handsRef.current = holistic;
+        console.log('MediaPipe Holistic loaded successfully');
         setIsMediaPipeReady(true);
       } catch (err) {
         console.error('MediaPipe Holistic load error, falling back to Hands:', err);
         // Fallback to Hands-only
         try {
-          // @ts-ignore
-          const { Hands } = await import('@mediapipe/hands');
+          const handsModule = await import('@mediapipe/hands');
+          const HandsClass = handsModule.Hands || (handsModule as any).default?.Hands;
           
-          const hands = new Hands({
+          if (!HandsClass) {
+            throw new Error('Hands class not found in module');
+          }
+          
+          const hands = new HandsClass({
             locateFile: (file: string) => {
               return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
             }
@@ -114,6 +126,7 @@ const CameraCapture = ({ onFramesCaptured, onClose }: CameraCaptureProps) => {
           });
 
           handsRef.current = hands;
+          console.log('MediaPipe Hands loaded (fallback)');
           setIsMediaPipeReady(true);
         } catch (fallbackErr) {
           console.error('MediaPipe load error:', fallbackErr);
