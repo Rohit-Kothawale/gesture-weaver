@@ -365,19 +365,25 @@ const landmarkTo3D = (
 ): THREE.Vector3 => {
   // Camera coordinates: x (0-1 left to right), y (0-1 top to bottom), z (depth, negative = closer)
   // Avatar coordinates: x (left/right), y (up/down), z (forward/back - positive = front)
+  // 
+  // The camera feed is already mirrored in CameraCapture (1.0 - x), so:
+  // - x=0 means left side of avatar's body (avatar's left)
+  // - x=1 means right side of avatar's body (avatar's right)
   
   const scale = AVATAR_CONFIG.handReachScale;
   
-  // Mirror X so left in camera = left on avatar (when facing camera)
-  const avatarX = (0.5 - x) * scale;
+  // Map X: x=0 -> avatar's left (negative X), x=1 -> avatar's right (positive X)
+  // Center is at x=0.5 -> avatarX=0
+  const avatarX = (x - 0.5) * scale;
   
-  // Flip Y - camera Y goes down, avatar Y goes up
-  // Map to reasonable arm reach range
+  // Flip Y - camera Y goes down (0=top, 1=bottom), avatar Y goes up
+  // y=0 (top of frame) -> high arm position
+  // y=1 (bottom of frame) -> low arm position
   const avatarY = (0.5 - y) * scale * 0.8;
   
   // Z: Always keep hands in front. Use camera depth for relative positioning only
-  // Clamp depth influence to prevent hands going behind body
-  const depthInfluence = Math.max(0, -z) * 0.15; // Only use negative z (closer to camera)
+  // MediaPipe z is negative when hand is closer to camera
+  const depthInfluence = Math.max(0, -z) * 0.15;
   const avatarZ = 0.25 + depthInfluence; // Base forward position + depth variation
   
   return new THREE.Vector3(avatarX, avatarY, avatarZ);
