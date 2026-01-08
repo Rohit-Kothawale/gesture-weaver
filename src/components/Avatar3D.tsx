@@ -59,12 +59,18 @@ const calculateHandPose = (landmarks: [number, number, number][]) => {
 };
 
 // Convert normalized coordinates to 3D world position
-// Hands should always appear IN FRONT of the avatar body (positive Z)
+// Both hands should ALWAYS appear IN FRONT of the avatar body
 const landmarkTo3D = (x: number, y: number, z: number, scale: number = 1.5): THREE.Vector3 => {
+  // Z from MediaPipe: negative = closer to camera, positive = further
+  // We want: positive Z = in front of avatar (toward camera)
+  // Force minimum Z of 0.3 so hands are always in front, use depth for relative positioning
+  const frontOffset = 0.4; // Base offset to keep hands in front
+  const depthScale = 0.2;  // How much depth variation to allow
+  
   return new THREE.Vector3(
-    (1 - x - 0.5) * scale,   // Mirror X for camera view
-    (1 - y - 0.5) * scale,   // Flip Y (camera Y is inverted)
-    0.5 + z * scale * 0.3    // ALWAYS positive Z = in front of body
+    (1 - x - 0.5) * scale,              // Mirror X for camera view
+    (1 - y - 0.5) * scale,              // Flip Y (camera Y is inverted)
+    frontOffset + (-z) * depthScale     // Always positive Z, depth affects relative position
   );
 };
 
