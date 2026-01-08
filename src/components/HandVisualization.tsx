@@ -1,6 +1,6 @@
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Grid, Environment, PerspectiveCamera } from '@react-three/drei';
-import Hand3D from './Hand3D';
+import Hand3D, { ArmSkeleton } from './Hand3D';
 import { HandFrame } from '@/types/hand-data';
 
 interface HandVisualizationProps {
@@ -8,7 +8,16 @@ interface HandVisualizationProps {
   showArms?: boolean;
 }
 
+// Helper to check if arm data is valid
+const isArmValid = (arm?: { shoulder: [number, number, number]; elbow: [number, number, number]; wrist: [number, number, number] }) => {
+  if (!arm) return false;
+  return arm.shoulder.some(v => v !== 0) && arm.elbow.some(v => v !== 0);
+};
+
 const Scene = ({ frame, showArms = true }: HandVisualizationProps) => {
+  const hasLeftArm = showArms && isArmValid(frame?.leftArm);
+  const hasRightArm = showArms && isArmValid(frame?.rightArm);
+
   return (
     <>
       <PerspectiveCamera makeDefault position={[0, 0, 5]} fov={50} />
@@ -42,7 +51,23 @@ const Scene = ({ frame, showArms = true }: HandVisualizationProps) => {
         position={[0, -2, 0]}
       />
 
-      {/* Hands with Arms */}
+      {/* Arms rendered at world position (not offset) */}
+      {hasLeftArm && frame?.leftArm && (
+        <ArmSkeleton 
+          armLandmarks={frame.leftArm} 
+          color="#00d4ff" 
+          glowColor="#00f0ff" 
+        />
+      )}
+      {hasRightArm && frame?.rightArm && (
+        <ArmSkeleton 
+          armLandmarks={frame.rightArm} 
+          color="#00ff88" 
+          glowColor="#00ffaa" 
+        />
+      )}
+
+      {/* Hands with fixed position offset for visibility */}
       {frame && (
         <>
           <Hand3D
@@ -50,14 +75,12 @@ const Scene = ({ frame, showArms = true }: HandVisualizationProps) => {
             color="#00d4ff"
             glowColor="#00f0ff"
             position={[1.5, 0, 0]}
-            armLandmarks={showArms ? frame.leftArm : undefined}
           />
           <Hand3D
             landmarks={frame.rightHand}
             color="#00ff88"
             glowColor="#00ffaa"
             position={[-1.5, 0, 0]}
-            armLandmarks={showArms ? frame.rightArm : undefined}
           />
         </>
       )}
