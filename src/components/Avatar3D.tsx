@@ -103,6 +103,49 @@ const calculateFingerCurl = (
   };
 };
 
+// Calculate thumb abduction/adduction (movement away from/toward palm)
+const calculateThumbAbduction = (
+  landmarks: [number, number, number][],
+  isLeftHand: boolean
+): number => {
+  // Key landmarks for thumb abduction calculation
+  const wrist = new THREE.Vector3(...landmarks[0]);
+  const thumbCMC = new THREE.Vector3(...landmarks[1]);  // Thumb base
+  const thumbMCP = new THREE.Vector3(...landmarks[2]);  // Thumb knuckle
+  const indexMCP = new THREE.Vector3(...landmarks[5]);  // Index base
+  const pinkyMCP = new THREE.Vector3(...landmarks[17]); // Pinky base
+  const middleMCP = new THREE.Vector3(...landmarks[9]); // Middle base
+  
+  // Calculate palm plane normal
+  const palmForward = new THREE.Vector3().subVectors(middleMCP, wrist).normalize();
+  const palmSide = new THREE.Vector3().subVectors(indexMCP, pinkyMCP).normalize();
+  const palmNormal = new THREE.Vector3().crossVectors(palmForward, palmSide).normalize();
+  
+  // Calculate thumb direction from CMC to MCP
+  const thumbDirection = new THREE.Vector3().subVectors(thumbMCP, thumbCMC).normalize();
+  
+  // Calculate the angle between thumb and palm plane
+  // Project thumb direction onto palm plane and measure deviation
+  const thumbOnPalm = thumbDirection.clone().projectOnPlane(palmNormal);
+  
+  // Reference direction: from wrist toward index (along palm)
+  const palmReference = new THREE.Vector3().subVectors(indexMCP, wrist).normalize();
+  
+  // Measure how much thumb deviates from the palm plane (abduction angle)
+  // Dot product with palm normal gives us how much thumb points away from palm
+  const abductionAmount = thumbDirection.dot(palmNormal);
+  
+  // Also measure spread angle (how far thumb is from index finger direction)
+  const spreadAngle = Math.acos(THREE.MathUtils.clamp(thumbOnPalm.dot(palmReference), -1, 1));
+  
+  // Combine abduction (out of plane) and spread (within plane)
+  // Positive = thumb away from palm, negative = thumb toward palm
+  const abduction = abductionAmount * 1.5 + (spreadAngle - Math.PI * 0.3) * 0.5;
+  
+  // Flip for right hand to maintain correct direction
+  return abduction * (isLeftHand ? 1 : -1);
+};
+
 // Apply finger rotations to bones
 const applyFingerRotations = (
   fingerBones: HandBones,
@@ -112,19 +155,40 @@ const applyFingerRotations = (
 ) => {
   const fingers = ['thumb', 'index', 'middle', 'ring', 'pinky'] as const;
   
+  // Calculate thumb abduction separately
+  const thumbAbduction = calculateThumbAbduction(landmarks, isLeftHand);
+  
   for (const fingerName of fingers) {
     const bones = fingerBones[fingerName];
     const isThumb = fingerName === 'thumb';
     const curl = calculateFingerCurl(landmarks, fingerName, isThumb);
     
     // Apply rotation to each bone segment
-    // Fingers curl primarily on X axis
     if (bones.proximal) {
-      const targetX = isThumb ? curl.proximal * 0.5 : curl.proximal;
-      bones.proximal.rotation.x = THREE.MathUtils.lerp(bones.proximal.rotation.x, targetX, lerp);
-      
-      // Add slight spread for more natural look
-      if (!isThumb) {
+      if (isThumb) {
+        // Thumb has special handling for abduction/adduction
+        const targetX = curl.proximal * 0.4;
+        bones.proximal.rotation.x = THREE.MathUtils.lerp(bones.proximal.rotation.x, targetX, lerp);
+        
+        // Z rotation for abduction (thumb moving away from palm)
+        bones.proximal.rotation.z = THREE.MathUtils.lerp(
+          bones.proximal.rotation.z, 
+          thumbAbduction * 0.6, 
+          lerp
+        );
+        
+        // Y rotation for opposition (thumb rotating to face other fingers)
+        const opposition = thumbAbduction * 0.3;
+        bones.proximal.rotation.y = THREE.MathUtils.lerp(
+          bones.proximal.rotation.y, 
+          opposition, 
+          lerp
+        );
+      } else {
+        // Regular fingers curl primarily on X axis
+        bones.proximal.rotation.x = THREE.MathUtils.lerp(bones.proximal.rotation.x, curl.proximal, lerp);
+        
+        // Add slight spread for more natural look
         const spreadAmount = fingerName === 'index' ? 0.05 : 
                             fingerName === 'pinky' ? -0.05 : 0;
         bones.proximal.rotation.z = THREE.MathUtils.lerp(
@@ -138,6 +202,15 @@ const applyFingerRotations = (
     if (bones.intermediate) {
       const targetX = isThumb ? curl.intermediate * 0.4 : curl.intermediate;
       bones.intermediate.rotation.x = THREE.MathUtils.lerp(bones.intermediate.rotation.x, targetX, lerp);
+      
+      // Thumb intermediate also gets some abduction influence
+      if (isThumb) {
+        bones.intermediate.rotation.z = THREE.MathUtils.lerp(
+          bones.intermediate.rotation.z, 
+          thumbAbduction * 0.2, 
+          lerp
+        );
+      }
     }
     
     if (bones.distal) {
