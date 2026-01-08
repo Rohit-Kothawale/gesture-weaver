@@ -8,6 +8,7 @@ interface Hand3DProps {
   color: string;
   glowColor: string;
   position?: [number, number, number];
+  centerOnWrist?: boolean; // When true, centers hand coordinates around wrist
 }
 
 // Export ArmSkeleton for use in HandVisualization
@@ -226,15 +227,25 @@ export const ArmSkeleton = ({
   );
 };
 
-const Hand3D = ({ landmarks, color, glowColor, position = [0, 0, 0] }: Hand3DProps) => {
+const Hand3D = ({ landmarks, color, glowColor, position = [0, 0, 0], centerOnWrist = false }: Hand3DProps) => {
   const visible = isHandVisible(landmarks);
 
   // Apply the reversal fixes and convert to Three.js Vectors
+  // When centerOnWrist is true, offset all points so wrist is at origin
   const normalizedLandmarks = useMemo(() => {
     if (!visible) return [];
     const coords = normalizeCoordinates(landmarks, 3);
+    
+    if (centerOnWrist && coords.length > 0) {
+      // Get wrist position (landmark 0) and subtract from all points
+      const wristX = coords[0][0];
+      const wristY = coords[0][1];
+      const wristZ = coords[0][2];
+      return coords.map((p) => new THREE.Vector3(p[0] - wristX, p[1] - wristY, p[2] - wristZ));
+    }
+    
     return coords.map((p) => new THREE.Vector3(...p));
-  }, [landmarks, visible]);
+  }, [landmarks, visible, centerOnWrist]);
 
   // Create the skeleton lines
   const linePoints = useMemo(() => {

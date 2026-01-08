@@ -101,12 +101,14 @@ const Scene = ({ frame, showArms = true }: HandVisualizationProps) => {
             color="#00d4ff"
             glowColor="#00f0ff"
             position={leftHandPosition}
+            centerOnWrist={hasLeftArm}
           />
           <Hand3D
             landmarks={frame.rightHand}
             color="#00ff88"
             glowColor="#00ffaa"
             position={rightHandPosition}
+            centerOnWrist={hasRightArm}
           />
         </>
       )}
