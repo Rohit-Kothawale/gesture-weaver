@@ -8,16 +8,165 @@ interface Avatar3DProps {
   frame: HandFrame | null;
 }
 
+interface FingerBones {
+  proximal?: THREE.Bone;
+  intermediate?: THREE.Bone;
+  distal?: THREE.Bone;
+}
+
+interface HandBones {
+  thumb: FingerBones;
+  index: FingerBones;
+  middle: FingerBones;
+  ring: FingerBones;
+  pinky: FingerBones;
+}
+
 interface BoneRefs {
   leftShoulder?: THREE.Bone;
   leftArm?: THREE.Bone;
   leftForeArm?: THREE.Bone;
   leftHand?: THREE.Bone;
+  leftFingers: HandBones;
   rightShoulder?: THREE.Bone;
   rightArm?: THREE.Bone;
   rightForeArm?: THREE.Bone;
   rightHand?: THREE.Bone;
+  rightFingers: HandBones;
 }
+
+// Finger landmark indices from MediaPipe
+// Each finger has 4 landmarks: MCP (base), PIP, DIP, TIP
+const FINGER_LANDMARKS = {
+  thumb: [1, 2, 3, 4],     // CMC, MCP, IP, TIP
+  index: [5, 6, 7, 8],     // MCP, PIP, DIP, TIP
+  middle: [9, 10, 11, 12], // MCP, PIP, DIP, TIP
+  ring: [13, 14, 15, 16],  // MCP, PIP, DIP, TIP
+  pinky: [17, 18, 19, 20], // MCP, PIP, DIP, TIP
+};
+
+// Mixamo finger bone naming convention
+const FINGER_BONE_NAMES = {
+  left: {
+    thumb: ['LeftHandThumb1', 'LeftHandThumb2', 'LeftHandThumb3'],
+    index: ['LeftHandIndex1', 'LeftHandIndex2', 'LeftHandIndex3'],
+    middle: ['LeftHandMiddle1', 'LeftHandMiddle2', 'LeftHandMiddle3'],
+    ring: ['LeftHandRing1', 'LeftHandRing2', 'LeftHandRing3'],
+    pinky: ['LeftHandPinky1', 'LeftHandPinky2', 'LeftHandPinky3'],
+  },
+  right: {
+    thumb: ['RightHandThumb1', 'RightHandThumb2', 'RightHandThumb3'],
+    index: ['RightHandIndex1', 'RightHandIndex2', 'RightHandIndex3'],
+    middle: ['RightHandMiddle1', 'RightHandMiddle2', 'RightHandMiddle3'],
+    ring: ['RightHandRing1', 'RightHandRing2', 'RightHandRing3'],
+    pinky: ['RightHandPinky1', 'RightHandPinky2', 'RightHandPinky3'],
+  },
+};
+
+// Calculate finger curl angle from landmarks
+const calculateFingerCurl = (
+  landmarks: [number, number, number][],
+  fingerName: keyof typeof FINGER_LANDMARKS,
+  isThumb: boolean = false
+): { proximal: number; intermediate: number; distal: number } => {
+  const indices = FINGER_LANDMARKS[fingerName];
+  
+  // Get the 4 points of the finger
+  const p0 = new THREE.Vector3(...landmarks[indices[0]]); // Base (MCP)
+  const p1 = new THREE.Vector3(...landmarks[indices[1]]); // First joint
+  const p2 = new THREE.Vector3(...landmarks[indices[2]]); // Second joint
+  const p3 = new THREE.Vector3(...landmarks[indices[3]]); // Tip
+  
+  // For reference, get wrist position
+  const wrist = new THREE.Vector3(...landmarks[0]);
+  
+  // Calculate vectors between joints
+  const v0 = new THREE.Vector3().subVectors(p0, wrist).normalize(); // Wrist to base
+  const v1 = new THREE.Vector3().subVectors(p1, p0).normalize();    // Base to first joint
+  const v2 = new THREE.Vector3().subVectors(p2, p1).normalize();    // First to second joint
+  const v3 = new THREE.Vector3().subVectors(p3, p2).normalize();    // Second to tip
+  
+  // Calculate angles between consecutive segments (dot product -> angle)
+  // Clamp to avoid NaN from floating point errors
+  const angle1 = Math.acos(THREE.MathUtils.clamp(v0.dot(v1), -1, 1));
+  const angle2 = Math.acos(THREE.MathUtils.clamp(v1.dot(v2), -1, 1));
+  const angle3 = Math.acos(THREE.MathUtils.clamp(v2.dot(v3), -1, 1));
+  
+  // Convert to curl (0 = straight, positive = curled)
+  // Scale and offset to get reasonable curl values
+  const curlScale = isThumb ? 1.2 : 1.5;
+  
+  return {
+    proximal: (Math.PI - angle1) * curlScale * 0.5,
+    intermediate: (Math.PI - angle2) * curlScale * 0.7,
+    distal: (Math.PI - angle3) * curlScale * 0.5,
+  };
+};
+
+// Apply finger rotations to bones
+const applyFingerRotations = (
+  fingerBones: HandBones,
+  landmarks: [number, number, number][],
+  isLeftHand: boolean,
+  lerp: number
+) => {
+  const fingers = ['thumb', 'index', 'middle', 'ring', 'pinky'] as const;
+  
+  for (const fingerName of fingers) {
+    const bones = fingerBones[fingerName];
+    const isThumb = fingerName === 'thumb';
+    const curl = calculateFingerCurl(landmarks, fingerName, isThumb);
+    
+    // Apply rotation to each bone segment
+    // Fingers curl primarily on X axis
+    if (bones.proximal) {
+      const targetX = isThumb ? curl.proximal * 0.5 : curl.proximal;
+      bones.proximal.rotation.x = THREE.MathUtils.lerp(bones.proximal.rotation.x, targetX, lerp);
+      
+      // Add slight spread for more natural look
+      if (!isThumb) {
+        const spreadAmount = fingerName === 'index' ? 0.05 : 
+                            fingerName === 'pinky' ? -0.05 : 0;
+        bones.proximal.rotation.z = THREE.MathUtils.lerp(
+          bones.proximal.rotation.z, 
+          spreadAmount * (isLeftHand ? 1 : -1), 
+          lerp
+        );
+      }
+    }
+    
+    if (bones.intermediate) {
+      const targetX = isThumb ? curl.intermediate * 0.4 : curl.intermediate;
+      bones.intermediate.rotation.x = THREE.MathUtils.lerp(bones.intermediate.rotation.x, targetX, lerp);
+    }
+    
+    if (bones.distal) {
+      const targetX = isThumb ? curl.distal * 0.3 : curl.distal;
+      bones.distal.rotation.x = THREE.MathUtils.lerp(bones.distal.rotation.x, targetX, lerp);
+    }
+  }
+};
+
+// Reset finger bones to relaxed position
+const resetFingerBones = (fingerBones: HandBones, lerp: number) => {
+  const fingers = ['thumb', 'index', 'middle', 'ring', 'pinky'] as const;
+  const relaxedCurl = 0.15; // Slight natural curl when relaxed
+  
+  for (const fingerName of fingers) {
+    const bones = fingerBones[fingerName];
+    
+    if (bones.proximal) {
+      bones.proximal.rotation.x = THREE.MathUtils.lerp(bones.proximal.rotation.x, relaxedCurl, lerp);
+      bones.proximal.rotation.z = THREE.MathUtils.lerp(bones.proximal.rotation.z, 0, lerp);
+    }
+    if (bones.intermediate) {
+      bones.intermediate.rotation.x = THREE.MathUtils.lerp(bones.intermediate.rotation.x, relaxedCurl * 0.5, lerp);
+    }
+    if (bones.distal) {
+      bones.distal.rotation.x = THREE.MathUtils.lerp(bones.distal.rotation.x, relaxedCurl * 0.3, lerp);
+    }
+  }
+};
 
 // Calculate hand center and orientation from landmarks
 const calculateHandPose = (landmarks: [number, number, number][]) => {
@@ -194,7 +343,10 @@ const calculateWristRotation = (
 // Mixamo Avatar Component
 const MixamoAvatar = ({ frame }: Avatar3DProps) => {
   const groupRef = useRef<THREE.Group>(null);
-  const bonesRef = useRef<BoneRefs>({});
+  const bonesRef = useRef<BoneRefs>({
+    leftFingers: { thumb: {}, index: {}, middle: {}, ring: {}, pinky: {} },
+    rightFingers: { thumb: {}, index: {}, middle: {}, ring: {}, pinky: {} },
+  });
   const [isReady, setIsReady] = useState(false);
   
   const { scene } = useGLTF('/models/mixamo-avatar.glb');
@@ -213,9 +365,27 @@ const MixamoAvatar = ({ frame }: Avatar3DProps) => {
   
   // Find bones on mount
   useEffect(() => {
+    const fingerBoneMap: Record<string, { hand: 'left' | 'right'; finger: keyof HandBones; segment: keyof FingerBones }> = {};
+    
+    // Build mapping for finger bones
+    for (const [side, fingers] of Object.entries(FINGER_BONE_NAMES)) {
+      for (const [fingerName, boneNames] of Object.entries(fingers)) {
+        const segments: (keyof FingerBones)[] = ['proximal', 'intermediate', 'distal'];
+        boneNames.forEach((boneName, idx) => {
+          fingerBoneMap[boneName] = {
+            hand: side as 'left' | 'right',
+            finger: fingerName as keyof HandBones,
+            segment: segments[idx],
+          };
+        });
+      }
+    }
+    
     scene.traverse((child) => {
       if ((child as THREE.Bone).isBone) {
         const bone = child as THREE.Bone;
+        
+        // Arm bones
         if (bone.name === 'LeftShoulder') bonesRef.current.leftShoulder = bone;
         if (bone.name === 'LeftArm') bonesRef.current.leftArm = bone;
         if (bone.name === 'LeftForeArm') bonesRef.current.leftForeArm = bone;
@@ -224,12 +394,32 @@ const MixamoAvatar = ({ frame }: Avatar3DProps) => {
         if (bone.name === 'RightArm') bonesRef.current.rightArm = bone;
         if (bone.name === 'RightForeArm') bonesRef.current.rightForeArm = bone;
         if (bone.name === 'RightHand') bonesRef.current.rightHand = bone;
+        
+        // Finger bones
+        if (fingerBoneMap[bone.name]) {
+          const { hand, finger, segment } = fingerBoneMap[bone.name];
+          const fingerBones = hand === 'left' ? bonesRef.current.leftFingers : bonesRef.current.rightFingers;
+          fingerBones[finger][segment] = bone;
+        }
       }
     });
     
-    const count = Object.values(bonesRef.current).filter(Boolean).length;
-    console.log('Found', count, 'arm bones');
-    setIsReady(count > 0);
+    // Count found bones
+    const armBoneCount = [
+      bonesRef.current.leftArm,
+      bonesRef.current.leftForeArm,
+      bonesRef.current.leftHand,
+      bonesRef.current.rightArm,
+      bonesRef.current.rightForeArm,
+      bonesRef.current.rightHand,
+    ].filter(Boolean).length;
+    
+    const fingerBoneCount = 
+      Object.values(bonesRef.current.leftFingers).reduce((sum, f) => sum + Object.values(f).filter(Boolean).length, 0) +
+      Object.values(bonesRef.current.rightFingers).reduce((sum, f) => sum + Object.values(f).filter(Boolean).length, 0);
+    
+    console.log('Found', armBoneCount, 'arm bones and', fingerBoneCount, 'finger bones');
+    setIsReady(armBoneCount > 0);
   }, [scene]);
   
   // Animation loop
@@ -275,6 +465,9 @@ const MixamoAvatar = ({ frame }: Avatar3DProps) => {
         bones.leftHand.rotation.x = THREE.MathUtils.lerp(bones.leftHand.rotation.x, wristRot.x, lerp);
         bones.leftHand.rotation.z = THREE.MathUtils.lerp(bones.leftHand.rotation.z, wristRot.z, lerp);
       }
+      
+      // Apply finger animations
+      applyFingerRotations(bones.leftFingers, frame.leftHand, true, lerp);
     } else {
       // Left arm relaxed position
       if (bones.leftArm) {
@@ -289,6 +482,9 @@ const MixamoAvatar = ({ frame }: Avatar3DProps) => {
         bones.leftHand.rotation.x = THREE.MathUtils.lerp(bones.leftHand.rotation.x, 0, lerp);
         bones.leftHand.rotation.z = THREE.MathUtils.lerp(bones.leftHand.rotation.z, 0, lerp);
       }
+      
+      // Reset fingers to relaxed position
+      resetFingerBones(bones.leftFingers, lerp);
     }
     
     // RIGHT ARM
@@ -318,6 +514,9 @@ const MixamoAvatar = ({ frame }: Avatar3DProps) => {
         bones.rightHand.rotation.x = THREE.MathUtils.lerp(bones.rightHand.rotation.x, wristRot.x, lerp);
         bones.rightHand.rotation.z = THREE.MathUtils.lerp(bones.rightHand.rotation.z, -wristRot.z, lerp);
       }
+      
+      // Apply finger animations
+      applyFingerRotations(bones.rightFingers, frame.rightHand, false, lerp);
     } else {
       // Right arm relaxed position
       if (bones.rightArm) {
@@ -332,6 +531,9 @@ const MixamoAvatar = ({ frame }: Avatar3DProps) => {
         bones.rightHand.rotation.x = THREE.MathUtils.lerp(bones.rightHand.rotation.x, 0, lerp);
         bones.rightHand.rotation.z = THREE.MathUtils.lerp(bones.rightHand.rotation.z, 0, lerp);
       }
+      
+      // Reset fingers to relaxed position
+      resetFingerBones(bones.rightFingers, lerp);
     }
   });
   
