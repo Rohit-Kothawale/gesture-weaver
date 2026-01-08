@@ -19,10 +19,10 @@ const BODY = {
   lowerLegLength: 0.28,
   jointRadius: 0.04,
   limbRadius: 0.03,
-  handRadius: 0.04,
+  handRadius: 0.07,
   footLength: 0.12,
-  fingerRadius: 0.008,
-  fingerJointRadius: 0.01,
+  fingerRadius: 0.018,
+  fingerJointRadius: 0.022,
 };
 
 // Colors
@@ -234,7 +234,7 @@ const HandWithFingers = ({
     }
 
     // Convert landmarks to 3D vectors relative to wrist position
-    const handScale = 0.4; // Scale down the hand to fit the avatar
+    const handScale = 0.55; // Larger scale for more visible hands
     
     // Calculate the center of the hand (wrist) for offset
     const wristLandmark = landmarks[0];
