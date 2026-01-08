@@ -19,6 +19,107 @@ interface BoneRefs {
   rightHand?: THREE.Bone;
 }
 
+// Calculate hand center and orientation from landmarks
+const calculateHandPose = (landmarks: [number, number, number][]) => {
+  // Key landmarks
+  const wrist = new THREE.Vector3(landmarks[0][0], landmarks[0][1], landmarks[0][2]);
+  const indexMCP = new THREE.Vector3(landmarks[5][0], landmarks[5][1], landmarks[5][2]);
+  const middleMCP = new THREE.Vector3(landmarks[9][0], landmarks[9][1], landmarks[9][2]);
+  const pinkyMCP = new THREE.Vector3(landmarks[17][0], landmarks[17][1], landmarks[17][2]);
+  const middleTip = new THREE.Vector3(landmarks[12][0], landmarks[12][1], landmarks[12][2]);
+  
+  // Palm center (average of wrist and finger bases)
+  const palmCenter = new THREE.Vector3()
+    .add(wrist)
+    .add(indexMCP)
+    .add(middleMCP)
+    .add(pinkyMCP)
+    .multiplyScalar(0.25);
+  
+  // Hand direction: from wrist toward middle finger
+  const handDirection = new THREE.Vector3().subVectors(middleMCP, wrist).normalize();
+  
+  // Palm width direction: from pinky to index (across the palm)
+  const palmWidth = new THREE.Vector3().subVectors(indexMCP, pinkyMCP).normalize();
+  
+  // Palm normal: perpendicular to palm surface (cross product)
+  const palmNormal = new THREE.Vector3().crossVectors(handDirection, palmWidth).normalize();
+  
+  // Finger extension direction (for hand rotation)
+  const fingerDirection = new THREE.Vector3().subVectors(middleTip, middleMCP).normalize();
+  
+  return {
+    wrist,
+    palmCenter,
+    handDirection,
+    palmNormal,
+    palmWidth,
+    fingerDirection
+  };
+};
+
+// Convert normalized coordinates to 3D world position
+const landmarkTo3D = (x: number, y: number, z: number, scale: number = 2): THREE.Vector3 => {
+  // x: 0-1 (left to right), y: 0-1 (top to bottom), z: depth
+  // Convert to centered coordinates
+  return new THREE.Vector3(
+    (x - 0.5) * scale,      // x: -1 to 1
+    -(y - 0.5) * scale,     // y: 1 to -1 (flip Y)
+    -z * scale * 0.5        // z: depth
+  );
+};
+
+// Simple IK solver for arm (shoulder -> elbow -> wrist)
+const solveArmIK = (
+  targetPos: THREE.Vector3,
+  isLeftArm: boolean,
+  shoulderPos: THREE.Vector3 = new THREE.Vector3(isLeftArm ? -0.2 : 0.2, 0.8, 0),
+  upperArmLength: number = 0.4,
+  forearmLength: number = 0.35
+) => {
+  // Direction from shoulder to target
+  const toTarget = new THREE.Vector3().subVectors(targetPos, shoulderPos);
+  const distanceToTarget = toTarget.length();
+  
+  // Clamp distance to arm reach
+  const maxReach = upperArmLength + forearmLength - 0.05;
+  const minReach = Math.abs(upperArmLength - forearmLength) + 0.05;
+  const clampedDistance = THREE.MathUtils.clamp(distanceToTarget, minReach, maxReach);
+  
+  // Normalize direction
+  const direction = toTarget.normalize();
+  
+  // Calculate elbow angle using law of cosines
+  const cosElbowAngle = (upperArmLength * upperArmLength + forearmLength * forearmLength - clampedDistance * clampedDistance) 
+    / (2 * upperArmLength * forearmLength);
+  const elbowAngle = Math.acos(THREE.MathUtils.clamp(cosElbowAngle, -1, 1));
+  
+  // Calculate shoulder angle to target
+  const cosShoulder = (upperArmLength * upperArmLength + clampedDistance * clampedDistance - forearmLength * forearmLength)
+    / (2 * upperArmLength * clampedDistance);
+  const shoulderOffset = Math.acos(THREE.MathUtils.clamp(cosShoulder, -1, 1));
+  
+  // Calculate rotation angles
+  // Shoulder rotation to point toward target
+  const shoulderPitch = Math.atan2(-direction.y, Math.sqrt(direction.x * direction.x + direction.z * direction.z));
+  const shoulderYaw = Math.atan2(direction.x, -direction.z);
+  
+  // Arm spread (rotation around local Z)
+  const armSpread = isLeftArm 
+    ? Math.atan2(direction.x, -direction.y) + Math.PI * 0.5
+    : Math.atan2(-direction.x, -direction.y) - Math.PI * 0.5;
+  
+  return {
+    shoulderRotation: {
+      x: shoulderPitch - shoulderOffset,
+      y: shoulderYaw * 0.3,
+      z: armSpread
+    },
+    elbowBend: Math.PI - elbowAngle,
+    reachRatio: clampedDistance / maxReach
+  };
+};
+
 // Mixamo Avatar Component
 const MixamoAvatar = ({ frame }: Avatar3DProps) => {
   const groupRef = useRef<THREE.Group>(null);
@@ -70,89 +171,115 @@ const MixamoAvatar = ({ frame }: Avatar3DProps) => {
     if (!frame || !isReady) return;
     
     const bones = bonesRef.current;
-    const lerp = 0.15;
+    const lerp = 0.2;
     
-    // LEFT ARM animation
-    // After camera mirror fix: x 0=left side, 1=right side, y 0=top, 1=bottom
+    // LEFT ARM
     if (isHandVisible(frame.leftHand)) {
+      const pose = calculateHandPose(frame.leftHand);
       const wrist = frame.leftHand[0];
-      const middleFinger = frame.leftHand[9];
       
-      // Y position: y=1 (bottom) = arm down, y=0 (top) = arm raised up
-      const yNorm = 1.0 - wrist[1]; // 0=down, 1=up
+      // Convert wrist position to 3D target
+      const targetPos = landmarkTo3D(wrist[0], wrist[1], wrist[2], 1.5);
       
-      // X position: x=0 (left), x=0.5 (center), x=1 (right)
-      // For left arm: lower x = arm out to the side, higher x = arm across body
-      const xNorm = wrist[0];
-      
-      // Arm raise (rotation around X axis) - controlled by Y
-      const armRaise = yNorm * Math.PI * 0.6; // 0 to ~108 degrees
-      
-      // Arm spread (rotation around Z axis) - controlled by X
-      // Left arm: when hand moves left (x→0), arm spreads out (positive Z)
-      // When hand moves right (x→1), arm comes across body
-      const armSpread = (0.5 - xNorm) * Math.PI * 0.8 + 0.5; // Base spread + X movement
-      
-      // Forward tilt from Z coordinate
-      const armForward = wrist[2] * 0.5;
+      // Solve IK for arm
+      const ik = solveArmIK(targetPos, true);
       
       if (bones.leftArm) {
-        // X rotation = raise/lower, Z rotation = spread in/out, Y = forward/back twist
-        bones.leftArm.rotation.x = THREE.MathUtils.lerp(bones.leftArm.rotation.x, -armRaise * 0.7, lerp);
-        bones.leftArm.rotation.z = THREE.MathUtils.lerp(bones.leftArm.rotation.z, armSpread, lerp);
-        bones.leftArm.rotation.y = THREE.MathUtils.lerp(bones.leftArm.rotation.y, armForward, lerp);
+        bones.leftArm.rotation.x = THREE.MathUtils.lerp(
+          bones.leftArm.rotation.x, 
+          ik.shoulderRotation.x, 
+          lerp
+        );
+        bones.leftArm.rotation.z = THREE.MathUtils.lerp(
+          bones.leftArm.rotation.z, 
+          ik.shoulderRotation.z, 
+          lerp
+        );
+        bones.leftArm.rotation.y = THREE.MathUtils.lerp(
+          bones.leftArm.rotation.y, 
+          ik.shoulderRotation.y, 
+          lerp
+        );
       }
       
       if (bones.leftForeArm) {
-        // Slight elbow bend
-        bones.leftForeArm.rotation.x = THREE.MathUtils.lerp(bones.leftForeArm.rotation.x, -yNorm * 0.4, lerp);
+        bones.leftForeArm.rotation.x = THREE.MathUtils.lerp(
+          bones.leftForeArm.rotation.x, 
+          -ik.elbowBend * 0.8, 
+          lerp
+        );
       }
       
-      // Keep hand/wrist relatively straight unless fingers point differently
-      if (bones.leftHand && middleFinger) {
-        const handTiltX = (middleFinger[1] - wrist[1]) * 1.5;
-        const handTiltZ = (middleFinger[0] - wrist[0]) * 1.5;
-        bones.leftHand.rotation.x = THREE.MathUtils.lerp(bones.leftHand.rotation.x, -handTiltX, lerp);
-        bones.leftHand.rotation.z = THREE.MathUtils.lerp(bones.leftHand.rotation.z, handTiltZ, lerp);
+      // Hand rotation from palm orientation
+      if (bones.leftHand) {
+        const palmPitch = Math.atan2(pose.palmNormal.y, pose.palmNormal.z);
+        const palmRoll = Math.atan2(pose.palmNormal.x, pose.palmNormal.z);
+        
+        bones.leftHand.rotation.x = THREE.MathUtils.lerp(
+          bones.leftHand.rotation.x, 
+          palmPitch * 0.5, 
+          lerp
+        );
+        bones.leftHand.rotation.z = THREE.MathUtils.lerp(
+          bones.leftHand.rotation.z, 
+          palmRoll * 0.5, 
+          lerp
+        );
       }
     }
     
-    // RIGHT ARM animation
-    // For right arm: higher x = arm out to the side, lower x = arm across body
+    // RIGHT ARM
     if (isHandVisible(frame.rightHand)) {
+      const pose = calculateHandPose(frame.rightHand);
       const wrist = frame.rightHand[0];
-      const middleFinger = frame.rightHand[9];
       
-      // Y position for raise
-      const yNorm = 1.0 - wrist[1];
+      // Convert wrist position to 3D target
+      const targetPos = landmarkTo3D(wrist[0], wrist[1], wrist[2], 1.5);
       
-      // X position for horizontal movement
-      // Right arm: when hand moves right (x→1), arm spreads out
-      // When hand moves left (x→0), arm comes across body
-      const xNorm = wrist[0];
-      
-      const armRaise = yNorm * Math.PI * 0.6;
-      
-      // Right arm spread - opposite direction from left
-      const armSpread = (xNorm - 0.5) * Math.PI * 0.8 - 0.5;
-      
-      const armForward = -wrist[2] * 0.5;
+      // Solve IK for arm
+      const ik = solveArmIK(targetPos, false);
       
       if (bones.rightArm) {
-        bones.rightArm.rotation.x = THREE.MathUtils.lerp(bones.rightArm.rotation.x, -armRaise * 0.7, lerp);
-        bones.rightArm.rotation.z = THREE.MathUtils.lerp(bones.rightArm.rotation.z, armSpread, lerp);
-        bones.rightArm.rotation.y = THREE.MathUtils.lerp(bones.rightArm.rotation.y, armForward, lerp);
+        bones.rightArm.rotation.x = THREE.MathUtils.lerp(
+          bones.rightArm.rotation.x, 
+          ik.shoulderRotation.x, 
+          lerp
+        );
+        bones.rightArm.rotation.z = THREE.MathUtils.lerp(
+          bones.rightArm.rotation.z, 
+          -ik.shoulderRotation.z, 
+          lerp
+        );
+        bones.rightArm.rotation.y = THREE.MathUtils.lerp(
+          bones.rightArm.rotation.y, 
+          -ik.shoulderRotation.y, 
+          lerp
+        );
       }
       
       if (bones.rightForeArm) {
-        bones.rightForeArm.rotation.x = THREE.MathUtils.lerp(bones.rightForeArm.rotation.x, -yNorm * 0.4, lerp);
+        bones.rightForeArm.rotation.x = THREE.MathUtils.lerp(
+          bones.rightForeArm.rotation.x, 
+          -ik.elbowBend * 0.8, 
+          lerp
+        );
       }
       
-      if (bones.rightHand && middleFinger) {
-        const handTiltX = (middleFinger[1] - wrist[1]) * 1.5;
-        const handTiltZ = (middleFinger[0] - wrist[0]) * 1.5;
-        bones.rightHand.rotation.x = THREE.MathUtils.lerp(bones.rightHand.rotation.x, -handTiltX, lerp);
-        bones.rightHand.rotation.z = THREE.MathUtils.lerp(bones.rightHand.rotation.z, -handTiltZ, lerp);
+      // Hand rotation from palm orientation
+      if (bones.rightHand) {
+        const palmPitch = Math.atan2(pose.palmNormal.y, pose.palmNormal.z);
+        const palmRoll = Math.atan2(pose.palmNormal.x, pose.palmNormal.z);
+        
+        bones.rightHand.rotation.x = THREE.MathUtils.lerp(
+          bones.rightHand.rotation.x, 
+          palmPitch * 0.5, 
+          lerp
+        );
+        bones.rightHand.rotation.z = THREE.MathUtils.lerp(
+          bones.rightHand.rotation.z, 
+          -palmRoll * 0.5, 
+          lerp
+        );
       }
     }
   });
