@@ -8,24 +8,18 @@ interface Avatar3DProps {
   frame: HandFrame | null;
 }
 
-// Mixamo bone names (standardized naming convention)
+// Mixamo bone names
 const MIXAMO_BONES = {
-  // Left arm chain
-  leftShoulder: ['LeftShoulder', 'mixamorig:LeftShoulder', 'mixamorig1LeftShoulder'],
-  leftArm: ['LeftArm', 'mixamorig:LeftArm', 'mixamorig1LeftArm'],
-  leftForeArm: ['LeftForeArm', 'mixamorig:LeftForeArm', 'mixamorig1LeftForeArm'],
-  leftHand: ['LeftHand', 'mixamorig:LeftHand', 'mixamorig1LeftHand'],
-  // Right arm chain  
-  rightShoulder: ['RightShoulder', 'mixamorig:RightShoulder', 'mixamorig1RightShoulder'],
-  rightArm: ['RightArm', 'mixamorig:RightArm', 'mixamorig1RightArm'],
-  rightForeArm: ['RightForeArm', 'mixamorig:RightForeArm', 'mixamorig1RightForeArm'],
-  rightHand: ['RightHand', 'mixamorig:RightHand', 'mixamorig1RightHand'],
-  // Spine
-  spine: ['Spine', 'mixamorig:Spine', 'mixamorig1Spine'],
-  spine1: ['Spine1', 'mixamorig:Spine1', 'mixamorig1Spine1'],
-  spine2: ['Spine2', 'mixamorig:Spine2', 'mixamorig1Spine2'],
-  head: ['Head', 'mixamorig:Head', 'mixamorig1Head'],
-  neck: ['Neck', 'mixamorig:Neck', 'mixamorig1Neck'],
+  leftShoulder: ['LeftShoulder'],
+  leftArm: ['LeftArm'],
+  leftForeArm: ['LeftForeArm'],
+  leftHand: ['LeftHand'],
+  rightShoulder: ['RightShoulder'],
+  rightArm: ['RightArm'],
+  rightForeArm: ['RightForeArm'],
+  rightHand: ['RightHand'],
+  spine: ['Spine'],
+  head: ['Head'],
 };
 
 interface BoneRefs {
@@ -41,116 +35,109 @@ interface BoneRefs {
   head?: THREE.Bone;
 }
 
-const findBone = (root: THREE.Object3D, names: string[]): THREE.Bone | undefined => {
-  let found: THREE.Bone | undefined;
-  root.traverse((child) => {
-    if (found) return;
-    if ((child as THREE.Bone).isBone) {
-      for (const name of names) {
-        if (child.name === name || child.name.includes(name)) {
-          found = child as THREE.Bone;
-          return;
-        }
-      }
-    }
-  });
-  return found;
-};
-
 // Mixamo Avatar Component
 const MixamoAvatar = ({ frame }: Avatar3DProps) => {
   const groupRef = useRef<THREE.Group>(null);
-  const [bones, setBones] = useState<BoneRefs>({});
+  const bonesRef = useRef<BoneRefs>({});
   const [isReady, setIsReady] = useState(false);
-  const initialRotations = useRef<Record<string, THREE.Euler>>({});
   
   const { scene } = useGLTF('/models/mixamo-avatar.glb');
   
-  // Clone scene and find bones
-  const clonedScene = useMemo(() => {
-    const clone = scene.clone();
-    return clone;
-  }, [scene]);
-  
-  // Calculate scale to fit avatar in view
+  // Calculate scale
   const { scale, yOffset } = useMemo(() => {
-    const box = new THREE.Box3().setFromObject(clonedScene);
+    const box = new THREE.Box3().setFromObject(scene);
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
     const maxDim = Math.max(size.x, size.y, size.z);
-    
-    console.log('Mixamo avatar size:', size, 'center:', center);
-    
     return {
       scale: 2.5 / maxDim,
       yOffset: -center.y * (2.5 / maxDim) - 0.5
     };
-  }, [clonedScene]);
+  }, [scene]);
   
-  // Find bones after scene is ready
+  // Find bones directly on the scene (not a clone)
   useEffect(() => {
-    const foundBones: BoneRefs = {
-      leftShoulder: findBone(clonedScene, MIXAMO_BONES.leftShoulder),
-      leftArm: findBone(clonedScene, MIXAMO_BONES.leftArm),
-      leftForeArm: findBone(clonedScene, MIXAMO_BONES.leftForeArm),
-      leftHand: findBone(clonedScene, MIXAMO_BONES.leftHand),
-      rightShoulder: findBone(clonedScene, MIXAMO_BONES.rightShoulder),
-      rightArm: findBone(clonedScene, MIXAMO_BONES.rightArm),
-      rightForeArm: findBone(clonedScene, MIXAMO_BONES.rightForeArm),
-      rightHand: findBone(clonedScene, MIXAMO_BONES.rightHand),
-      spine: findBone(clonedScene, MIXAMO_BONES.spine),
-      head: findBone(clonedScene, MIXAMO_BONES.head),
+    const findBone = (names: string[]): THREE.Bone | undefined => {
+      let found: THREE.Bone | undefined;
+      scene.traverse((child) => {
+        if (found) return;
+        if ((child as THREE.Bone).isBone) {
+          for (const name of names) {
+            if (child.name === name) {
+              found = child as THREE.Bone;
+              return;
+            }
+          }
+        }
+      });
+      return found;
     };
     
-    // Store initial rotations
-    Object.entries(foundBones).forEach(([key, bone]) => {
-      if (bone) {
-        initialRotations.current[key] = bone.rotation.clone();
-      }
-    });
+    bonesRef.current = {
+      leftShoulder: findBone(MIXAMO_BONES.leftShoulder),
+      leftArm: findBone(MIXAMO_BONES.leftArm),
+      leftForeArm: findBone(MIXAMO_BONES.leftForeArm),
+      leftHand: findBone(MIXAMO_BONES.leftHand),
+      rightShoulder: findBone(MIXAMO_BONES.rightShoulder),
+      rightArm: findBone(MIXAMO_BONES.rightArm),
+      rightForeArm: findBone(MIXAMO_BONES.rightForeArm),
+      rightHand: findBone(MIXAMO_BONES.rightHand),
+      spine: findBone(MIXAMO_BONES.spine),
+      head: findBone(MIXAMO_BONES.head),
+    };
     
-    console.log('Found Mixamo bones:', Object.entries(foundBones).map(([k, v]) => `${k}: ${v?.name || 'not found'}`));
-    setBones(foundBones);
-    setIsReady(Object.values(foundBones).some(b => b !== undefined));
-  }, [clonedScene]);
+    const foundCount = Object.values(bonesRef.current).filter(b => b).length;
+    console.log('Bones found:', foundCount, bonesRef.current);
+    setIsReady(foundCount > 0);
+  }, [scene]);
   
   // Animate bones based on hand landmarks
   useFrame((state) => {
-    // Subtle idle animation
+    // Subtle idle sway
     if (groupRef.current) {
-      groupRef.current.position.y = yOffset + Math.sin(state.clock.elapsedTime * 0.5) * 0.02;
+      groupRef.current.rotation.y = Math.sin(state.clock.elapsedTime * 0.3) * 0.03;
     }
     
     if (!frame || !isReady) return;
     
-    const { leftArm, leftForeArm, leftHand, rightArm, rightForeArm, rightHand } = bones;
+    const bones = bonesRef.current;
     
     // Animate left arm based on left hand landmarks
     if (isHandVisible(frame.leftHand)) {
       const normalized = normalizeCoordinates(frame.leftHand);
-      const wrist = normalized[0];
+      const wrist = normalized[0]; // Wrist position (0-1 range, centered)
       const middleFinger = normalized[9];
       
-      // Calculate arm angles from wrist position
-      const armAngleX = -(wrist[1] - 0.5) * 1.5; // Up/down based on Y
-      const armAngleZ = (wrist[0] - 0.5) * 1.0 + 0.3; // Side angle
-      const foreArmAngle = -Math.abs(wrist[1] - 0.5) * 0.8; // Elbow bend
+      // Convert normalized coords to arm angles
+      // wrist[0] = x (left-right), wrist[1] = y (up-down), wrist[2] = z (forward-back)
       
-      // Hand rotation from finger direction
-      const handRotX = (middleFinger[1] - wrist[1]) * 2;
-      const handRotZ = (middleFinger[0] - wrist[0]) * 2;
+      // Upper arm rotation
+      if (bones.leftArm) {
+        // Raise arm based on wrist Y position
+        const raiseAngle = -(wrist[1] - 0.3) * 2.0; // More movement range
+        // Spread arm based on wrist X position
+        const spreadAngle = (wrist[0] + 0.3) * 1.5;
+        
+        bones.leftArm.rotation.x = THREE.MathUtils.lerp(bones.leftArm.rotation.x, raiseAngle, 0.15);
+        bones.leftArm.rotation.z = THREE.MathUtils.lerp(bones.leftArm.rotation.z, spreadAngle, 0.15);
+      }
       
-      if (leftArm) {
-        leftArm.rotation.x = THREE.MathUtils.lerp(leftArm.rotation.x, armAngleX, 0.12);
-        leftArm.rotation.z = THREE.MathUtils.lerp(leftArm.rotation.z, armAngleZ, 0.12);
+      // Forearm rotation (elbow bend)
+      if (bones.leftForeArm) {
+        const bendAngle = -Math.max(0, (0.5 - wrist[1])) * 2.5; // Bend elbow when hand is lower
+        const twistAngle = -wrist[2] * 0.8;
+        
+        bones.leftForeArm.rotation.x = THREE.MathUtils.lerp(bones.leftForeArm.rotation.x, bendAngle, 0.15);
+        bones.leftForeArm.rotation.y = THREE.MathUtils.lerp(bones.leftForeArm.rotation.y, twistAngle, 0.15);
       }
-      if (leftForeArm) {
-        leftForeArm.rotation.x = THREE.MathUtils.lerp(leftForeArm.rotation.x, foreArmAngle, 0.12);
-        leftForeArm.rotation.y = THREE.MathUtils.lerp(leftForeArm.rotation.y, -wrist[2] * 0.5, 0.12);
-      }
-      if (leftHand) {
-        leftHand.rotation.x = THREE.MathUtils.lerp(leftHand.rotation.x, handRotX, 0.15);
-        leftHand.rotation.z = THREE.MathUtils.lerp(leftHand.rotation.z, handRotZ, 0.15);
+      
+      // Hand/wrist rotation
+      if (bones.leftHand) {
+        const handTiltX = (middleFinger[1] - wrist[1]) * 3;
+        const handTiltZ = (middleFinger[0] - wrist[0]) * 3;
+        
+        bones.leftHand.rotation.x = THREE.MathUtils.lerp(bones.leftHand.rotation.x, handTiltX, 0.2);
+        bones.leftHand.rotation.z = THREE.MathUtils.lerp(bones.leftHand.rotation.z, handTiltZ, 0.2);
       }
     }
     
@@ -160,36 +147,43 @@ const MixamoAvatar = ({ frame }: Avatar3DProps) => {
       const wrist = normalized[0];
       const middleFinger = normalized[9];
       
-      const armAngleX = -(wrist[1] - 0.5) * 1.5;
-      const armAngleZ = -(wrist[0] - 0.5) * 1.0 - 0.3;
-      const foreArmAngle = -Math.abs(wrist[1] - 0.5) * 0.8;
-      
-      const handRotX = (middleFinger[1] - wrist[1]) * 2;
-      const handRotZ = (middleFinger[0] - wrist[0]) * 2;
-      
-      if (rightArm) {
-        rightArm.rotation.x = THREE.MathUtils.lerp(rightArm.rotation.x, armAngleX, 0.12);
-        rightArm.rotation.z = THREE.MathUtils.lerp(rightArm.rotation.z, armAngleZ, 0.12);
+      // Upper arm rotation
+      if (bones.rightArm) {
+        const raiseAngle = -(wrist[1] - 0.3) * 2.0;
+        const spreadAngle = -(wrist[0] - 0.3) * 1.5; // Negative for right side
+        
+        bones.rightArm.rotation.x = THREE.MathUtils.lerp(bones.rightArm.rotation.x, raiseAngle, 0.15);
+        bones.rightArm.rotation.z = THREE.MathUtils.lerp(bones.rightArm.rotation.z, spreadAngle, 0.15);
       }
-      if (rightForeArm) {
-        rightForeArm.rotation.x = THREE.MathUtils.lerp(rightForeArm.rotation.x, foreArmAngle, 0.12);
-        rightForeArm.rotation.y = THREE.MathUtils.lerp(rightForeArm.rotation.y, wrist[2] * 0.5, 0.12);
+      
+      // Forearm rotation
+      if (bones.rightForeArm) {
+        const bendAngle = -Math.max(0, (0.5 - wrist[1])) * 2.5;
+        const twistAngle = wrist[2] * 0.8;
+        
+        bones.rightForeArm.rotation.x = THREE.MathUtils.lerp(bones.rightForeArm.rotation.x, bendAngle, 0.15);
+        bones.rightForeArm.rotation.y = THREE.MathUtils.lerp(bones.rightForeArm.rotation.y, twistAngle, 0.15);
       }
-      if (rightHand) {
-        rightHand.rotation.x = THREE.MathUtils.lerp(rightHand.rotation.x, handRotX, 0.15);
-        rightHand.rotation.z = THREE.MathUtils.lerp(rightHand.rotation.z, -handRotZ, 0.15);
+      
+      // Hand rotation
+      if (bones.rightHand) {
+        const handTiltX = (middleFinger[1] - wrist[1]) * 3;
+        const handTiltZ = -(middleFinger[0] - wrist[0]) * 3;
+        
+        bones.rightHand.rotation.x = THREE.MathUtils.lerp(bones.rightHand.rotation.x, handTiltX, 0.2);
+        bones.rightHand.rotation.z = THREE.MathUtils.lerp(bones.rightHand.rotation.z, handTiltZ, 0.2);
       }
     }
   });
   
   return (
     <group ref={groupRef} position={[0, yOffset, 0]} scale={scale}>
-      <primitive object={clonedScene} />
+      <primitive object={scene} />
     </group>
   );
 };
 
-// Procedural fallback avatar (same as before)
+// Procedural fallback components (kept for backup)
 const BODY_OFFSET: [number, number, number] = [0, -0.8, 0];
 const LEFT_SHOULDER: [number, number, number] = [-0.5, 0.75, 0];
 const RIGHT_SHOULDER: [number, number, number] = [0.5, 0.75, 0];
@@ -360,12 +354,11 @@ const ProceduralAvatar = ({ frame }: Avatar3DProps) => {
   );
 };
 
-// Main component - uses Mixamo avatar
+// Main component
 const Avatar3D = ({ frame }: Avatar3DProps) => {
   return <MixamoAvatar frame={frame} />;
 };
 
-// Preload the model
 useGLTF.preload('/models/mixamo-avatar.glb');
 
 export default Avatar3D;
