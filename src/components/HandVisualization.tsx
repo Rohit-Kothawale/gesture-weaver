@@ -29,17 +29,31 @@ const Scene = ({ frame, showArms = true }: HandVisualizationProps) => {
   const hasLeftArm = showArms && isArmValid(frame?.leftArm);
   const hasRightArm = showArms && isArmValid(frame?.rightArm);
 
+  // Debug logging
+  console.log('HandVisualization:', {
+    hasLeftArm,
+    hasRightArm,
+    leftArm: frame?.leftArm,
+    rightArm: frame?.rightArm,
+    leftHandVisible: frame?.leftHand?.some(p => p[0] !== 0 || p[1] !== 0),
+    rightHandVisible: frame?.rightHand?.some(p => p[0] !== 0 || p[1] !== 0),
+  });
+
   // Calculate hand positions - use arm wrist when available, otherwise use fixed offset
   const leftHandPosition = useMemo((): [number, number, number] => {
     if (hasLeftArm && frame?.leftArm) {
-      return getWristPosition(frame.leftArm);
+      const pos = getWristPosition(frame.leftArm);
+      console.log('Left hand position from arm:', pos);
+      return pos;
     }
     return [1.5, 0, 0]; // Default fixed position
   }, [hasLeftArm, frame?.leftArm]);
 
   const rightHandPosition = useMemo((): [number, number, number] => {
     if (hasRightArm && frame?.rightArm) {
-      return getWristPosition(frame.rightArm);
+      const pos = getWristPosition(frame.rightArm);
+      console.log('Right hand position from arm:', pos);
+      return pos;
     }
     return [-1.5, 0, 0]; // Default fixed position
   }, [hasRightArm, frame?.rightArm]);
