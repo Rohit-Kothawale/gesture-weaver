@@ -180,10 +180,11 @@ const MixamoAvatar = ({ frame }: Avatar3DProps) => {
     const bones = bonesRef.current;
     const lerp = 0.2;
     
-    // Default relaxed arm position (arms down at sides)
-    const relaxedArmX = 0.1;  // Slight forward tilt
-    const relaxedArmZ = 0.15; // Arms at sides, slightly away from body
+    // Default relaxed arm position (arms straight down at sides)
+    const relaxedArmX = 0;     // No forward tilt - straight down
+    const relaxedArmZ = 0.05;  // Very close to body
     const relaxedForearmX = 0; // Straight forearm
+    const relaxedHandX = 0;    // Neutral hand
     
     // LEFT ARM
     if (frame && isHandVisible(frame.leftHand)) {
