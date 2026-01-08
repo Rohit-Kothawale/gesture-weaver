@@ -60,12 +60,12 @@ const calculateHandPose = (landmarks: [number, number, number][]) => {
 
 // Convert normalized coordinates to 3D world position
 const landmarkTo3D = (x: number, y: number, z: number, scale: number = 2): THREE.Vector3 => {
-  // x: 0-1 (left to right), y: 0-1 (top to bottom), z: depth
-  // Convert to centered coordinates
+  // x: 0-1 (left to right), y: 0-1 (top to bottom), z: depth (negative = closer to camera)
+  // Avatar faces toward positive Z (toward camera), so hand in front = positive Z
   return new THREE.Vector3(
-    (x - 0.5) * scale,      // x: -1 to 1
-    -(y - 0.5) * scale,     // y: 1 to -1 (flip Y)
-    -z * scale * 0.5        // z: depth
+    (x - 0.5) * scale,      // x: -1 to 1 (left to right)
+    -(y - 0.5) * scale,     // y: flip so up is positive
+    z * scale + 0.5         // z: positive = in front of body (toward camera)
   );
 };
 
@@ -101,8 +101,9 @@ const solveArmIK = (
   
   // Calculate rotation angles
   // Shoulder rotation to point toward target
+  // Avatar faces +Z, so forward movement is in +Z direction
   const shoulderPitch = Math.atan2(-direction.y, Math.sqrt(direction.x * direction.x + direction.z * direction.z));
-  const shoulderYaw = Math.atan2(direction.x, -direction.z);
+  const shoulderYaw = Math.atan2(direction.x, direction.z); // Changed: positive Z is forward
   
   // Arm spread (rotation around local Z)
   const armSpread = isLeftArm 
