@@ -163,13 +163,17 @@ const CameraCapture = ({ onFramesCaptured, onClose }: CameraCaptureProps) => {
       // Process Holistic results - extract pose landmarks for arms
       const poseLandmarks = results.poseLandmarks;
       
+      // MediaPipe Holistic naming convention:
+      // - "left" in MediaPipe = the person's actual left side (appears on RIGHT of camera view)
+      // - "right" in MediaPipe = the person's actual right side (appears on LEFT of camera view)
+      // 
+      // After mirroring (1.0 - x), the avatar's left side should match user's left side
+      // So: MediaPipe leftHand -> avatar leftHand, MediaPipe rightHand -> avatar rightHand
+      // But arm indices: 11,13,15 = MediaPipe "left" side, 12,14,16 = MediaPipe "right" side
+      
       if (poseLandmarks && poseLandmarks.length > 0) {
-        // MediaPipe Pose landmark indices (from YOUR perspective):
-        // 11 = YOUR left shoulder, 12 = YOUR right shoulder
-        // 13 = YOUR left elbow, 14 = YOUR right elbow
-        // 15 = YOUR left wrist, 16 = YOUR right wrist
-        
-        // YOUR left arm (landmarks 11, 13, 15)
+        // MediaPipe "left" arm (indices 11, 13, 15) = user's actual left arm
+        // This should connect to leftHandLandmarks
         if (poseLandmarks[11] && poseLandmarks[13] && poseLandmarks[15]) {
           leftArm = {
             shoulder: [1.0 - poseLandmarks[11].x, poseLandmarks[11].y, poseLandmarks[11].z],
@@ -177,8 +181,8 @@ const CameraCapture = ({ onFramesCaptured, onClose }: CameraCaptureProps) => {
             wrist: [1.0 - poseLandmarks[15].x, poseLandmarks[15].y, poseLandmarks[15].z],
           };
           
-          // Draw left arm on canvas
-          ctx.strokeStyle = '#ff6b6b';
+          // Draw left arm on canvas (cyan to match left hand)
+          ctx.strokeStyle = '#00d4ff';
           ctx.lineWidth = 3;
           ctx.beginPath();
           ctx.moveTo(poseLandmarks[11].x * canvasRef.current!.width, poseLandmarks[11].y * canvasRef.current!.height);
@@ -187,7 +191,8 @@ const CameraCapture = ({ onFramesCaptured, onClose }: CameraCaptureProps) => {
           ctx.stroke();
         }
         
-        // YOUR right arm (landmarks 12, 14, 16)
+        // MediaPipe "right" arm (indices 12, 14, 16) = user's actual right arm
+        // This should connect to rightHandLandmarks
         if (poseLandmarks[12] && poseLandmarks[14] && poseLandmarks[16]) {
           rightArm = {
             shoulder: [1.0 - poseLandmarks[12].x, poseLandmarks[12].y, poseLandmarks[12].z],
@@ -195,8 +200,8 @@ const CameraCapture = ({ onFramesCaptured, onClose }: CameraCaptureProps) => {
             wrist: [1.0 - poseLandmarks[16].x, poseLandmarks[16].y, poseLandmarks[16].z],
           };
           
-          // Draw right arm on canvas
-          ctx.strokeStyle = '#4ecdc4';
+          // Draw right arm on canvas (green to match right hand)
+          ctx.strokeStyle = '#00ff88';
           ctx.lineWidth = 3;
           ctx.beginPath();
           ctx.moveTo(poseLandmarks[12].x * canvasRef.current!.width, poseLandmarks[12].y * canvasRef.current!.height);
@@ -206,10 +211,10 @@ const CameraCapture = ({ onFramesCaptured, onClose }: CameraCaptureProps) => {
         }
       }
 
-      // Process YOUR left hand landmarks from Holistic
+      // MediaPipe leftHandLandmarks = user's actual left hand
       if (results.leftHandLandmarks) {
         const landmarks = results.leftHandLandmarks;
-        const color = '#ff6b6b';
+        const color = '#00d4ff'; // Cyan for left
         
         landmarks.forEach((landmark: any) => {
           const x = landmark.x * canvasRef.current!.width;
@@ -220,14 +225,14 @@ const CameraCapture = ({ onFramesCaptured, onClose }: CameraCaptureProps) => {
           ctx.fill();
         });
 
-        // Mirror X for display - YOUR left hand stays leftHandLandmarks
+        // Mirror X for avatar display
         leftHandLandmarks = landmarks.map((lm: any) => [1.0 - lm.x, lm.y, lm.z]);
       }
 
-      // Process YOUR right hand landmarks from Holistic
+      // MediaPipe rightHandLandmarks = user's actual right hand  
       if (results.rightHandLandmarks) {
         const landmarks = results.rightHandLandmarks;
-        const color = '#4ecdc4';
+        const color = '#00ff88'; // Green for right
         
         landmarks.forEach((landmark: any) => {
           const x = landmark.x * canvasRef.current!.width;
@@ -238,7 +243,7 @@ const CameraCapture = ({ onFramesCaptured, onClose }: CameraCaptureProps) => {
           ctx.fill();
         });
 
-        // Mirror X for display - YOUR right hand stays rightHandLandmarks
+        // Mirror X for avatar display
         rightHandLandmarks = landmarks.map((lm: any) => [1.0 - lm.x, lm.y, lm.z]);
       }
     } else {
