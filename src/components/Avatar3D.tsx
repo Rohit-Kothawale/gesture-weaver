@@ -2,7 +2,7 @@ import { useRef, useEffect, useState, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
-import { HandFrame, isHandVisible } from '@/types/hand-data';
+import { HandFrame, isHandVisible, normalizeCoordinates } from '@/types/hand-data';
 
 interface Avatar3DProps {
   frame: HandFrame | null;
@@ -101,11 +101,6 @@ const calculateFingerCurl = (
   // When finger is straight: angles are ~PI (180°), curl should be ~0
   // When finger is bent: angles decrease, curl should increase
   const curlScale = isThumb ? 1.0 : 1.2;
-  
-  // Debug logging (will show in console)
-  if (fingerName === 'index' && Math.random() < 0.02) {
-    console.log(`Finger ${fingerName}: proxAngle=${proximalAngle.toFixed(2)}, pipAngle=${angle1.toFixed(2)}, dipAngle=${angle2.toFixed(2)}`);
-  }
   
   return {
     proximal: proximalAngle * curlScale * 0.6,
@@ -221,13 +216,28 @@ const calculateFingerSpread = (
   };
 };
 
+// Normalize landmarks the same way Hand3D does for consistent coordinate system
+const normalizeLandmarksFor3D = (
+  landmarks: [number, number, number][],
+  scale: number = 1
+): [number, number, number][] => {
+  if (!landmarks || landmarks.length === 0) return [];
+  return landmarks.map((point) => [
+    (1 - point[0] - 0.5) * scale, // Mirror X
+    (1 - point[1] - 0.5) * scale, // Flip Y
+    -point[2] * scale,            // Negate Z for depth
+  ]);
+};
+
 // Apply finger rotations to bones
 const applyFingerRotations = (
   fingerBones: HandBones,
-  landmarks: [number, number, number][],
+  rawLandmarks: [number, number, number][],
   isLeftHand: boolean,
   lerp: number
 ) => {
+  // Use normalized landmarks for consistent calculations with Hand3D
+  const landmarks = normalizeLandmarksFor3D(rawLandmarks, 3);
   const fingers = ['thumb', 'index', 'middle', 'ring', 'pinky'] as const;
   
   // Calculate thumb abduction separately
