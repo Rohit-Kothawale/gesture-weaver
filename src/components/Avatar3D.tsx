@@ -168,13 +168,18 @@ const MixamoAvatar = ({ frame }: Avatar3DProps) => {
       groupRef.current.rotation.y = Math.sin(state.clock.elapsedTime * 0.3) * 0.02;
     }
     
-    if (!frame || !isReady) return;
+    if (!isReady) return;
     
     const bones = bonesRef.current;
     const lerp = 0.2;
     
+    // Default relaxed arm position (arms down at sides)
+    const relaxedArmX = 0.1;  // Slight forward tilt
+    const relaxedArmZ = 0.15; // Arms at sides, slightly away from body
+    const relaxedForearmX = 0; // Straight forearm
+    
     // LEFT ARM
-    if (isHandVisible(frame.leftHand)) {
+    if (frame && isHandVisible(frame.leftHand)) {
       const pose = calculateHandPose(frame.leftHand);
       const wrist = frame.leftHand[0];
       
@@ -226,10 +231,24 @@ const MixamoAvatar = ({ frame }: Avatar3DProps) => {
           lerp
         );
       }
+    } else {
+      // Left arm relaxed position
+      if (bones.leftArm) {
+        bones.leftArm.rotation.x = THREE.MathUtils.lerp(bones.leftArm.rotation.x, relaxedArmX, lerp);
+        bones.leftArm.rotation.z = THREE.MathUtils.lerp(bones.leftArm.rotation.z, relaxedArmZ, lerp);
+        bones.leftArm.rotation.y = THREE.MathUtils.lerp(bones.leftArm.rotation.y, 0, lerp);
+      }
+      if (bones.leftForeArm) {
+        bones.leftForeArm.rotation.x = THREE.MathUtils.lerp(bones.leftForeArm.rotation.x, relaxedForearmX, lerp);
+      }
+      if (bones.leftHand) {
+        bones.leftHand.rotation.x = THREE.MathUtils.lerp(bones.leftHand.rotation.x, 0, lerp);
+        bones.leftHand.rotation.z = THREE.MathUtils.lerp(bones.leftHand.rotation.z, 0, lerp);
+      }
     }
     
     // RIGHT ARM
-    if (isHandVisible(frame.rightHand)) {
+    if (frame && isHandVisible(frame.rightHand)) {
       const pose = calculateHandPose(frame.rightHand);
       const wrist = frame.rightHand[0];
       
@@ -280,6 +299,20 @@ const MixamoAvatar = ({ frame }: Avatar3DProps) => {
           -palmRoll * 0.5, 
           lerp
         );
+      }
+    } else {
+      // Right arm relaxed position
+      if (bones.rightArm) {
+        bones.rightArm.rotation.x = THREE.MathUtils.lerp(bones.rightArm.rotation.x, relaxedArmX, lerp);
+        bones.rightArm.rotation.z = THREE.MathUtils.lerp(bones.rightArm.rotation.z, -relaxedArmZ, lerp);
+        bones.rightArm.rotation.y = THREE.MathUtils.lerp(bones.rightArm.rotation.y, 0, lerp);
+      }
+      if (bones.rightForeArm) {
+        bones.rightForeArm.rotation.x = THREE.MathUtils.lerp(bones.rightForeArm.rotation.x, relaxedForearmX, lerp);
+      }
+      if (bones.rightHand) {
+        bones.rightHand.rotation.x = THREE.MathUtils.lerp(bones.rightHand.rotation.x, 0, lerp);
+        bones.rightHand.rotation.z = THREE.MathUtils.lerp(bones.rightHand.rotation.z, 0, lerp);
       }
     }
   });
