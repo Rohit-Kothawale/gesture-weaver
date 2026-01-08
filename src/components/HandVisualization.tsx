@@ -16,9 +16,10 @@ const isArmValid = (arm?: ArmLandmarks) => {
 };
 
 // Convert arm wrist to 3D position for hand placement
+// Must match ArmSkeleton's normalize function
 const getWristPosition = (arm: ArmLandmarks, scale = 3): [number, number, number] => {
   return [
-    (arm.wrist[0] - 0.5) * scale,
+    (1 - arm.wrist[0] - 0.5) * scale,  // Mirror X to match ArmSkeleton
     (1 - arm.wrist[1] - 0.5) * scale,
     -arm.wrist[2] * scale,
   ];
