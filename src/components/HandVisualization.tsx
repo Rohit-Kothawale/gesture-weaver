@@ -48,13 +48,13 @@ const Scene = ({ frame }: HandVisualizationProps) => {
             landmarks={frame.leftHand}
             color="#00d4ff"
             glowColor="#00f0ff"
-            position={[-0.8, 0, 0]}
+            position={[-1.5, 0, 0]}
           />
           <Hand3D
             landmarks={frame.rightHand}
             color="#00ff88"
             glowColor="#00ffaa"
-            position={[0.8, 0, 0]}
+            position={[1.5, 0, 0]}
           />
         </>
       )}
