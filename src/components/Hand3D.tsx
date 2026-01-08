@@ -8,7 +8,14 @@ interface Hand3DProps {
   color: string;
   glowColor: string;
   position?: [number, number, number];
-  armLandmarks?: ArmLandmarks;
+}
+
+// Export ArmSkeleton for use in HandVisualization
+export interface ArmSkeletonProps {
+  armLandmarks: ArmLandmarks;
+  color: string;
+  glowColor: string;
+  scale?: number;
 }
 
 // Finger segment connections for skin tubes
@@ -154,18 +161,13 @@ const ArmLimb = ({
   );
 };
 
-// Arm skeleton component
-const ArmSkeleton = ({
+// Arm skeleton component - exported for use in HandVisualization
+export const ArmSkeleton = ({
   armLandmarks,
   color,
   glowColor,
   scale = 3,
-}: {
-  armLandmarks: ArmLandmarks;
-  color: string;
-  glowColor: string;
-  scale?: number;
-}) => {
+}: ArmSkeletonProps) => {
   const positions = useMemo(() => {
     const normalize = (coord: [number, number, number]) => new THREE.Vector3(
       (1 - coord[0] - 0.5) * scale,
@@ -224,7 +226,7 @@ const ArmSkeleton = ({
   );
 };
 
-const Hand3D = ({ landmarks, color, glowColor, position = [0, 0, 0], armLandmarks }: Hand3DProps) => {
+const Hand3D = ({ landmarks, color, glowColor, position = [0, 0, 0] }: Hand3DProps) => {
   const visible = isHandVisible(landmarks);
 
   // Apply the reversal fixes and convert to Three.js Vectors
@@ -251,91 +253,72 @@ const Hand3D = ({ landmarks, color, glowColor, position = [0, 0, 0], armLandmark
     return baseRadius * taperFactor;
   };
 
-  // Check if arm landmarks are valid
-  const hasArmData = armLandmarks && 
-    armLandmarks.shoulder.some(v => v !== 0) && 
-    armLandmarks.elbow.some(v => v !== 0);
-
-  if (!visible && !hasArmData) return null;
+  if (!visible) return null;
 
   return (
     <group position={position}>
-      {/* Arm skeleton (shoulder to wrist) */}
-      {hasArmData && (
-        <ArmSkeleton 
-          armLandmarks={armLandmarks!} 
-          color={color} 
-          glowColor={glowColor} 
-        />
+      {/* Skin Layer - Palm */}
+      {normalizedLandmarks.length >= 21 && (
+        <PalmMesh landmarks={normalizedLandmarks} skinColor={skinColor} />
       )}
 
-      {/* Hand rendering (only if visible) */}
-      {visible && (
-        <>
-          {/* Skin Layer - Palm */}
-          {normalizedLandmarks.length >= 21 && (
-            <PalmMesh landmarks={normalizedLandmarks} skinColor={skinColor} />
-          )}
+      {/* Skin Layer - Finger tubes */}
+      {normalizedLandmarks.length >= 21 && FINGER_SEGMENTS.map((finger, fingerIdx) => (
+        finger.slice(1).map(([start, end], segmentIdx) => (
+          <SkinTube
+            key={`skin-${fingerIdx}-${segmentIdx}`}
+            start={normalizedLandmarks[start]}
+            end={normalizedLandmarks[end]}
+            startRadius={getSegmentRadius(segmentIdx, fingerIdx === 0)}
+            endRadius={getSegmentRadius(segmentIdx + 1, fingerIdx === 0)}
+            skinColor={skinColor}
+          />
+        ))
+      ))}
 
-          {/* Skin Layer - Finger tubes */}
-          {normalizedLandmarks.length >= 21 && FINGER_SEGMENTS.map((finger, fingerIdx) => (
-            finger.slice(1).map(([start, end], segmentIdx) => (
-              <SkinTube
-                key={`skin-${fingerIdx}-${segmentIdx}`}
-                start={normalizedLandmarks[start]}
-                end={normalizedLandmarks[end]}
-                startRadius={getSegmentRadius(segmentIdx, fingerIdx === 0)}
-                endRadius={getSegmentRadius(segmentIdx + 1, fingerIdx === 0)}
-                skinColor={skinColor}
-              />
-            ))
-          ))}
+      {/* Skin spheres at joints for smooth connections */}
+      {normalizedLandmarks.map((pos, index) => {
+        const isWrist = index === 0;
+        const isTip = [4, 8, 12, 16, 20].includes(index);
+        const isBase = [1, 5, 9, 13, 17].includes(index);
+        
+        let radius = 0.045;
+        if (isWrist) radius = 0.08;
+        else if (isBase) radius = 0.055;
+        else if (isTip) radius = 0.035;
+        
+        return (
+          <mesh key={`skin-joint-${index}`} position={pos}>
+            <sphereGeometry args={[radius, 16, 16]} />
+            <meshStandardMaterial 
+              color={skinColor} 
+              roughness={0.7} 
+              metalness={0.1}
+            />
+          </mesh>
+        );
+      })}
 
-          {/* Skin spheres at joints for smooth connections */}
-          {normalizedLandmarks.map((pos, index) => {
-            const isWrist = index === 0;
-            const isTip = [4, 8, 12, 16, 20].includes(index);
-            const isBase = [1, 5, 9, 13, 17].includes(index);
-            
-            let radius = 0.045;
-            if (isWrist) radius = 0.08;
-            else if (isBase) radius = 0.055;
-            else if (isTip) radius = 0.035;
-            
-            return (
-              <mesh key={`skin-joint-${index}`} position={pos}>
-                <sphereGeometry args={[radius, 16, 16]} />
-                <meshStandardMaterial 
-                  color={skinColor} 
-                  roughness={0.7} 
-                  metalness={0.1}
-                />
-              </mesh>
-            );
-          })}
+      {/* Skeleton overlay - joints */}
+      {normalizedLandmarks.map((pos, index) => (
+        <mesh key={index} position={pos}>
+          <sphereGeometry args={[0.02, 12, 12]} />
+          <meshStandardMaterial color={color} emissive={glowColor} emissiveIntensity={0.8} />
+        </mesh>
+      ))}
 
-          {/* Skeleton overlay - joints */}
-          {normalizedLandmarks.map((pos, index) => (
-            <mesh key={index} position={pos}>
-              <sphereGeometry args={[0.02, 12, 12]} />
-              <meshStandardMaterial color={color} emissive={glowColor} emissiveIntensity={0.8} />
-            </mesh>
-          ))}
+      {/* Skeleton overlay - lines */}
+      {linePoints.map((points, index) => (
+        <Line key={index} points={points} color={color} lineWidth={1.5} transparent opacity={0.5} />
+      ))}
 
-          {/* Skeleton overlay - lines */}
-          {linePoints.map((points, index) => (
-            <Line key={index} points={points} color={color} lineWidth={1.5} transparent opacity={0.5} />
-          ))}
-
-          {/* Fingertip Highlight */}
-          {[4, 8, 12, 16, 20].map((tip) => (
-            <mesh key={`glow-${tip}`} position={normalizedLandmarks[tip]}>
-              <sphereGeometry args={[0.045, 16, 16]} />
-              <meshBasicMaterial color={glowColor} transparent opacity={0.4} />
-            </mesh>
-          ))}
-        </>
-      )}
+      {/* Fingertip Highlight */}
+      {[4, 8, 12, 16, 20].map((tip) => (
+        <mesh key={`glow-${tip}`} position={normalizedLandmarks[tip]}>
+          <sphereGeometry args={[0.045, 16, 16]} />
+          <meshBasicMaterial color={glowColor} transparent opacity={0.4} />
+        </mesh>
+      ))}
     </group>
   );
 };
