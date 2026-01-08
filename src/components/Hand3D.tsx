@@ -9,6 +9,7 @@ interface Hand3DProps {
   glowColor: string;
   position?: [number, number, number];
   centerOnWrist?: boolean; // When true, centers hand coordinates around wrist
+  flipX?: boolean; // When true, flips X axis for correct hand orientation
 }
 
 // Export ArmSkeleton for use in HandVisualization
@@ -227,25 +228,33 @@ export const ArmSkeleton = ({
   );
 };
 
-const Hand3D = ({ landmarks, color, glowColor, position = [0, 0, 0], centerOnWrist = false }: Hand3DProps) => {
+const Hand3D = ({ landmarks, color, glowColor, position = [0, 0, 0], centerOnWrist = false, flipX = false }: Hand3DProps) => {
   const visible = isHandVisible(landmarks);
 
   // Apply the reversal fixes and convert to Three.js Vectors
   // When centerOnWrist is true, offset all points so wrist is at origin
+  // When flipX is true, flip X coordinates for correct hand orientation
   const normalizedLandmarks = useMemo(() => {
     if (!visible) return [];
     const coords = normalizeCoordinates(landmarks, 3);
     
-    if (centerOnWrist && coords.length > 0) {
-      // Get wrist position (landmark 0) and subtract from all points
-      const wristX = coords[0][0];
-      const wristY = coords[0][1];
-      const wristZ = coords[0][2];
-      return coords.map((p) => new THREE.Vector3(p[0] - wristX, p[1] - wristY, p[2] - wristZ));
+    let processedCoords = coords;
+    
+    // Apply X flip if needed (for right hand to show thumb correctly)
+    if (flipX) {
+      processedCoords = coords.map((p) => [-p[0], p[1], p[2]] as [number, number, number]);
     }
     
-    return coords.map((p) => new THREE.Vector3(...p));
-  }, [landmarks, visible, centerOnWrist]);
+    if (centerOnWrist && processedCoords.length > 0) {
+      // Get wrist position (landmark 0) and subtract from all points
+      const wristX = processedCoords[0][0];
+      const wristY = processedCoords[0][1];
+      const wristZ = processedCoords[0][2];
+      return processedCoords.map((p) => new THREE.Vector3(p[0] - wristX, p[1] - wristY, p[2] - wristZ));
+    }
+    
+    return processedCoords.map((p) => new THREE.Vector3(...p));
+  }, [landmarks, visible, centerOnWrist, flipX]);
 
   // Create the skeleton lines
   const linePoints = useMemo(() => {
