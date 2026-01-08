@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Camera, Square, Download, Play, Loader2 } from 'lucide-react';
+import { Camera, Square, Download, Play, Loader2, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { HandFrame } from '@/types/hand-data';
+import { Canvas } from '@react-three/fiber';
+import { OrbitControls } from '@react-three/drei';
+import Avatar3D from './Avatar3D';
 
 interface CameraCaptureProps {
   onFramesCaptured: (frames: HandFrame[], label: string) => void;
@@ -17,6 +20,8 @@ const CameraCapture = ({ onFramesCaptured, onClose }: CameraCaptureProps) => {
   const [isMediaPipeReady, setIsMediaPipeReady] = useState(false);
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showAvatarPreview, setShowAvatarPreview] = useState(true);
+  const [currentFrame, setCurrentFrame] = useState<HandFrame | null>(null);
   
   const handsRef = useRef<any>(null);
   const animationRef = useRef<number | null>(null);
@@ -170,6 +175,14 @@ const CameraCapture = ({ onFramesCaptured, onClose }: CameraCaptureProps) => {
 
     ctx.restore();
 
+    // Create current frame for live preview
+    const liveFrame: HandFrame = {
+      label: signLabel || 'Live',
+      leftHand: leftHandLandmarks,
+      rightHand: rightHandLandmarks
+    };
+    setCurrentFrame(liveFrame);
+
     // Record frame if recording
     if (recordingRef.current) {
       const frame: HandFrame = {
@@ -275,7 +288,17 @@ const CameraCapture = ({ onFramesCaptured, onClose }: CameraCaptureProps) => {
           <Camera className="w-5 h-5" />
           Camera Capture
         </h3>
-        <Button onClick={onClose} variant="ghost" size="sm">×</Button>
+        <div className="flex items-center gap-2">
+          <Button 
+            onClick={() => setShowAvatarPreview(!showAvatarPreview)} 
+            variant={showAvatarPreview ? "default" : "outline"}
+            size="sm"
+            title="Toggle Avatar Preview"
+          >
+            <User className="w-4 h-4" />
+          </Button>
+          <Button onClick={onClose} variant="ghost" size="sm">×</Button>
+        </div>
       </div>
 
       {/* Sign Label Input */}
@@ -290,40 +313,78 @@ const CameraCapture = ({ onFramesCaptured, onClose }: CameraCaptureProps) => {
         />
       </div>
 
-      {/* Video Preview */}
-      <div className="relative rounded-lg overflow-hidden bg-black">
-        <video
-          ref={videoRef}
-          className="absolute inset-0 w-full h-full object-cover opacity-0"
-          playsInline
-          muted
-        />
-        <canvas
-          ref={canvasRef}
-          width={640}
-          height={480}
-          className="w-full h-auto"
-        />
-        
-        {!isMediaPipeReady && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-            <div className="text-center space-y-2">
-              <Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" />
-              <p className="text-sm text-white">Loading hand tracking...</p>
+      {/* Video and Avatar Preview */}
+      <div className={`grid gap-3 ${showAvatarPreview ? 'grid-cols-2' : 'grid-cols-1'}`}>
+        {/* Camera Feed */}
+        <div className="relative rounded-lg overflow-hidden bg-black">
+          <video
+            ref={videoRef}
+            className="absolute inset-0 w-full h-full object-cover opacity-0"
+            playsInline
+            muted
+          />
+          <canvas
+            ref={canvasRef}
+            width={640}
+            height={480}
+            className="w-full h-auto"
+          />
+          
+          {!isMediaPipeReady && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+              <div className="text-center space-y-2">
+                <Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" />
+                <p className="text-sm text-white">Loading hand tracking...</p>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {isRecording && (
-          <div className="absolute top-3 left-3 flex items-center gap-2 bg-destructive px-3 py-1 rounded-full">
-            <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
-            <span className="text-xs text-white font-medium">REC</span>
-          </div>
-        )}
+          {isRecording && (
+            <div className="absolute top-3 left-3 flex items-center gap-2 bg-destructive px-3 py-1 rounded-full">
+              <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+              <span className="text-xs text-white font-medium">REC</span>
+            </div>
+          )}
 
-        <div className="absolute bottom-3 right-3 bg-black/70 px-2 py-1 rounded text-xs text-white">
-          {recordedFrames.length} frames
+          <div className="absolute bottom-3 right-3 bg-black/70 px-2 py-1 rounded text-xs text-white">
+            {recordedFrames.length} frames
+          </div>
+          
+          <div className="absolute top-3 right-3 bg-black/70 px-2 py-1 rounded text-xs text-white">
+            Camera
+          </div>
         </div>
+
+        {/* Live Avatar Preview */}
+        {showAvatarPreview && (
+          <div className="relative rounded-lg overflow-hidden bg-gradient-to-b from-slate-800 to-slate-900 aspect-[4/3]">
+            <Canvas
+              camera={{ position: [0, 0.5, 2.5], fov: 50 }}
+              className="w-full h-full"
+            >
+              <ambientLight intensity={0.6} />
+              <directionalLight position={[5, 5, 5]} intensity={0.8} />
+              <directionalLight position={[-5, 3, -5]} intensity={0.3} />
+              <Avatar3D frame={currentFrame} />
+              <OrbitControls 
+                enableZoom={false}
+                enablePan={false}
+                minPolarAngle={Math.PI / 3}
+                maxPolarAngle={Math.PI / 1.8}
+              />
+            </Canvas>
+            
+            <div className="absolute top-3 right-3 bg-black/70 px-2 py-1 rounded text-xs text-white">
+              Live Preview
+            </div>
+            
+            {currentFrame && (
+              <div className="absolute bottom-3 left-3 bg-black/70 px-2 py-1 rounded text-xs text-green-400">
+                ● Tracking
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Controls */}
