@@ -338,11 +338,8 @@ const normalizeLandmarks = (
 };
 
 const CartoonAvatar = ({ frame }: CartoonAvatarProps) => {
-  // Swap hands to match the Hands Only view mirroring (user's left = avatar's right)
-  const leftHandVisible = frame?.rightHand ? isHandVisible(frame.rightHand) : false;
-  const rightHandVisible = frame?.leftHand ? isHandVisible(frame.leftHand) : false;
-  const leftHandData = frame?.rightHand || null;
-  const rightHandData = frame?.leftHand || null;
+  const leftHandVisible = frame?.leftHand ? isHandVisible(frame.leftHand) : false;
+  const rightHandVisible = frame?.rightHand ? isHandVisible(frame.rightHand) : false;
   
   // Calculate arm positions based on hand landmarks
   const armPositions = useMemo(() => {
@@ -361,9 +358,8 @@ const CartoonAvatar = ({ frame }: CartoonAvatarProps) => {
     let left = { ...defaultLeft };
     let right = { ...defaultRight };
     
-    // Left arm uses rightHand data (swapped for mirror effect)
-    if (leftHandVisible && leftHandData) {
-      const handPos = normalizeLandmarks(leftHandData, 1.2);
+    if (leftHandVisible && frame?.leftHand) {
+      const handPos = normalizeLandmarks(frame.leftHand, 1.2);
       handPos.y += 0.1;
       
       const shoulderToHand = new THREE.Vector3().subVectors(handPos, defaultLeft.shoulder);
@@ -381,9 +377,8 @@ const CartoonAvatar = ({ frame }: CartoonAvatarProps) => {
       left.wrist = handPos;
     }
     
-    // Right arm uses leftHand data (swapped for mirror effect)
-    if (rightHandVisible && rightHandData) {
-      const handPos = normalizeLandmarks(rightHandData, 1.2);
+    if (rightHandVisible && frame?.rightHand) {
+      const handPos = normalizeLandmarks(frame.rightHand, 1.2);
       handPos.y += 0.1;
       
       const shoulderToHand = new THREE.Vector3().subVectors(handPos, defaultRight.shoulder);
@@ -402,7 +397,7 @@ const CartoonAvatar = ({ frame }: CartoonAvatarProps) => {
     }
     
     return { left, right };
-  }, [leftHandData, rightHandData, leftHandVisible, rightHandVisible]);
+  }, [frame, leftHandVisible, rightHandVisible]);
   
   // Static body positions
   const positions = useMemo(() => {
@@ -466,9 +461,9 @@ const CartoonAvatar = ({ frame }: CartoonAvatarProps) => {
       <Joint position={armPositions.left.elbow} color={COLORS.joint} />
       <Limb start={armPositions.left.elbow} end={armPositions.left.wrist} color={COLORS.skin} />
       
-      {/* Left Hand with Fingers (uses rightHand data - swapped) */}
+      {/* Left Hand with Fingers */}
       <HandWithFingers 
-        landmarks={leftHandData}
+        landmarks={frame?.leftHand || null}
         wristPos={armPositions.left.wrist}
         isVisible={leftHandVisible}
       />
@@ -478,9 +473,9 @@ const CartoonAvatar = ({ frame }: CartoonAvatarProps) => {
       <Joint position={armPositions.right.elbow} color={COLORS.joint} />
       <Limb start={armPositions.right.elbow} end={armPositions.right.wrist} color={COLORS.skin} />
       
-      {/* Right Hand with Fingers (uses leftHand data - swapped) */}
+      {/* Right Hand with Fingers */}
       <HandWithFingers 
-        landmarks={rightHandData}
+        landmarks={frame?.rightHand || null}
         wristPos={armPositions.right.wrist}
         isVisible={rightHandVisible}
       />
