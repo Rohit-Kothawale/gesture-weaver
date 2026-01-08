@@ -59,16 +59,12 @@ const calculateHandPose = (landmarks: [number, number, number][]) => {
 };
 
 // Convert normalized coordinates to 3D world position
-// MUST match the normalizeCoordinates function in hand-data.ts for consistency
+// Hands should always appear IN FRONT of the avatar body (positive Z)
 const landmarkTo3D = (x: number, y: number, z: number, scale: number = 1.5): THREE.Vector3 => {
-  // Match the Hand3D normalizeCoordinates transform:
-  // X: mirror and center (1 - x - 0.5)
-  // Y: flip and center (1 - y - 0.5)  
-  // Z: negative depth
   return new THREE.Vector3(
-    (1 - x - 0.5) * scale,   // Same as Hand3D: mirror X
-    (1 - y - 0.5) * scale,   // Same as Hand3D: flip Y
-    -z * scale * 0.3         // Same direction as Hand3D, scaled down
+    (1 - x - 0.5) * scale,   // Mirror X for camera view
+    (1 - y - 0.5) * scale,   // Flip Y (camera Y is inverted)
+    0.5 + z * scale * 0.3    // ALWAYS positive Z = in front of body
   );
 };
 
@@ -109,7 +105,7 @@ const solveArmIK = (
   // Z rotation (roll): arm spread in/out from body
   
   const armPitch = Math.asin(THREE.MathUtils.clamp(-direction.y, -1, 1)); // Negative Y = arm up
-  const armYaw = Math.atan2(-direction.z, Math.abs(direction.x) + 0.01); // Z controls forward
+  const armYaw = Math.atan2(direction.z, Math.abs(direction.x) + 0.01); // Positive Z = forward
   
   // Arm spread based on X direction
   const armSpread = isLeftArm 
