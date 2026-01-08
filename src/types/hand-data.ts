@@ -1,7 +1,15 @@
+export interface ArmLandmarks {
+  shoulder: [number, number, number];
+  elbow: [number, number, number];
+  wrist: [number, number, number];
+}
+
 export interface HandFrame {
   label: string;
   leftHand: [number, number, number][];
   rightHand: [number, number, number][];
+  leftArm?: ArmLandmarks;
+  rightArm?: ArmLandmarks;
 }
 
 export interface RawCSVRow {
