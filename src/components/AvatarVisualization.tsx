@@ -57,10 +57,15 @@ const AvatarVisualization = ({ frame }: AvatarVisualizationProps) => {
       <Canvas
         gl={{ antialias: true, alpha: true }}
         style={{ background: 'transparent' }}
+        onCreated={({ gl }) => {
+          console.log('Canvas created');
+        }}
       >
         <color attach="background" args={['#0a0f14']} />
         <fog attach="fog" args={['#0a0f14', 5, 15]} />
-        <Scene frame={frame} />
+        <Suspense fallback={null}>
+          <Scene frame={frame} />
+        </Suspense>
       </Canvas>
     </div>
   );
