@@ -109,7 +109,6 @@ const Scene = ({ frame, showArms = true }: HandVisualizationProps) => {
             glowColor="#00ffaa"
             position={rightHandPosition}
             centerOnWrist={hasRightArm}
-            flipX={true}
           />
         </>
       )}
