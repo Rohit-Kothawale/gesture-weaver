@@ -146,6 +146,70 @@ const calculateThumbAbduction = (
   return abduction * (isLeftHand ? 1 : -1);
 };
 
+// Calculate finger spread angles (how much each finger deviates from its neighbor)
+const calculateFingerSpread = (
+  landmarks: [number, number, number][],
+  isLeftHand: boolean
+): { index: number; middle: number; ring: number; pinky: number } => {
+  // MCP (base) landmarks for each finger
+  const indexMCP = new THREE.Vector3(...landmarks[5]);
+  const middleMCP = new THREE.Vector3(...landmarks[9]);
+  const ringMCP = new THREE.Vector3(...landmarks[13]);
+  const pinkyMCP = new THREE.Vector3(...landmarks[17]);
+  
+  // Tip landmarks for direction reference
+  const indexTip = new THREE.Vector3(...landmarks[8]);
+  const middleTip = new THREE.Vector3(...landmarks[12]);
+  const ringTip = new THREE.Vector3(...landmarks[16]);
+  const pinkyTip = new THREE.Vector3(...landmarks[20]);
+  
+  // Wrist for reference
+  const wrist = new THREE.Vector3(...landmarks[0]);
+  
+  // Calculate direction vectors for each finger (from MCP toward tip)
+  const indexDir = new THREE.Vector3().subVectors(indexTip, indexMCP).normalize();
+  const middleDir = new THREE.Vector3().subVectors(middleTip, middleMCP).normalize();
+  const ringDir = new THREE.Vector3().subVectors(ringTip, ringMCP).normalize();
+  const pinkyDir = new THREE.Vector3().subVectors(pinkyTip, pinkyMCP).normalize();
+  
+  // Calculate palm forward direction (reference for neutral spread)
+  const palmForward = new THREE.Vector3().subVectors(middleMCP, wrist).normalize();
+  
+  // Calculate spread as angle deviation from middle finger direction
+  // Positive = spread outward, negative = fingers together
+  const indexSpread = Math.acos(THREE.MathUtils.clamp(indexDir.dot(middleDir), -1, 1));
+  const middleSpread = 0; // Middle finger is the reference
+  const ringSpread = Math.acos(THREE.MathUtils.clamp(ringDir.dot(middleDir), -1, 1));
+  const pinkySpread = Math.acos(THREE.MathUtils.clamp(pinkyDir.dot(ringDir), -1, 1));
+  
+  // Determine spread direction by checking cross product with palm normal
+  const palmSide = new THREE.Vector3().subVectors(indexMCP, pinkyMCP).normalize();
+  const palmNormal = new THREE.Vector3().crossVectors(palmForward, palmSide).normalize();
+  
+  // Check which side of middle each finger is on
+  const indexCross = new THREE.Vector3().crossVectors(middleDir, indexDir);
+  const ringCross = new THREE.Vector3().crossVectors(middleDir, ringDir);
+  const pinkyCross = new THREE.Vector3().crossVectors(ringDir, pinkyDir);
+  
+  const indexSign = indexCross.dot(palmNormal) > 0 ? 1 : -1;
+  const ringSign = ringCross.dot(palmNormal) > 0 ? -1 : 1;
+  const pinkySign = pinkyCross.dot(palmNormal) > 0 ? -1 : 1;
+  
+  // Scale spread values - baseline when fingers together is ~0.1-0.15 rad
+  const baselineSpread = 0.12;
+  const spreadScale = 2.0;
+  
+  // Flip for hand side
+  const sideMultiplier = isLeftHand ? 1 : -1;
+  
+  return {
+    index: (indexSpread - baselineSpread) * spreadScale * indexSign * sideMultiplier,
+    middle: middleSpread,
+    ring: (ringSpread - baselineSpread) * spreadScale * ringSign * sideMultiplier,
+    pinky: (pinkySpread - baselineSpread * 0.8) * spreadScale * pinkySign * sideMultiplier,
+  };
+};
+
 // Apply finger rotations to bones
 const applyFingerRotations = (
   fingerBones: HandBones,
@@ -157,6 +221,9 @@ const applyFingerRotations = (
   
   // Calculate thumb abduction separately
   const thumbAbduction = calculateThumbAbduction(landmarks, isLeftHand);
+  
+  // Calculate finger spread
+  const fingerSpread = calculateFingerSpread(landmarks, isLeftHand);
   
   for (const fingerName of fingers) {
     const bones = fingerBones[fingerName];
@@ -188,12 +255,11 @@ const applyFingerRotations = (
         // Regular fingers curl primarily on X axis
         bones.proximal.rotation.x = THREE.MathUtils.lerp(bones.proximal.rotation.x, curl.proximal, lerp);
         
-        // Add slight spread for more natural look
-        const spreadAmount = fingerName === 'index' ? 0.05 : 
-                            fingerName === 'pinky' ? -0.05 : 0;
+        // Apply calculated spread for each finger
+        const spreadAmount = fingerSpread[fingerName as keyof typeof fingerSpread] || 0;
         bones.proximal.rotation.z = THREE.MathUtils.lerp(
           bones.proximal.rotation.z, 
-          spreadAmount * (isLeftHand ? 1 : -1), 
+          spreadAmount, 
           lerp
         );
       }
