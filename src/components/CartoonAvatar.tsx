@@ -140,6 +140,84 @@ const Finger = ({
   );
 };
 
+// Palm mesh component
+const PalmMesh = ({
+  landmarks,
+  color,
+}: {
+  landmarks: THREE.Vector3[];
+  color: string;
+}) => {
+  const palmGeometry = useMemo(() => {
+    if (landmarks.length < 21) return null;
+
+    // Key palm landmarks
+    const wrist = landmarks[0];
+    const thumbBase = landmarks[1];
+    const indexBase = landmarks[5];
+    const middleBase = landmarks[9];
+    const ringBase = landmarks[13];
+    const pinkyBase = landmarks[17];
+
+    // Create vertices for palm triangles
+    const vertices = new Float32Array([
+      // Triangle 1: wrist -> thumb -> index
+      wrist.x, wrist.y, wrist.z,
+      thumbBase.x, thumbBase.y, thumbBase.z,
+      indexBase.x, indexBase.y, indexBase.z,
+      
+      // Triangle 2: wrist -> index -> middle
+      wrist.x, wrist.y, wrist.z,
+      indexBase.x, indexBase.y, indexBase.z,
+      middleBase.x, middleBase.y, middleBase.z,
+      
+      // Triangle 3: wrist -> middle -> ring
+      wrist.x, wrist.y, wrist.z,
+      middleBase.x, middleBase.y, middleBase.z,
+      ringBase.x, ringBase.y, ringBase.z,
+      
+      // Triangle 4: wrist -> ring -> pinky
+      wrist.x, wrist.y, wrist.z,
+      ringBase.x, ringBase.y, ringBase.z,
+      pinkyBase.x, pinkyBase.y, pinkyBase.z,
+      
+      // Triangle 5: index -> middle -> ring (upper palm)
+      indexBase.x, indexBase.y, indexBase.z,
+      middleBase.x, middleBase.y, middleBase.z,
+      ringBase.x, ringBase.y, ringBase.z,
+      
+      // Triangle 6: index -> ring -> pinky
+      indexBase.x, indexBase.y, indexBase.z,
+      ringBase.x, ringBase.y, ringBase.z,
+      pinkyBase.x, pinkyBase.y, pinkyBase.z,
+      
+      // Triangle 7: thumb -> index (thumb web)
+      thumbBase.x, thumbBase.y, thumbBase.z,
+      indexBase.x, indexBase.y, indexBase.z,
+      wrist.x, wrist.y, wrist.z,
+    ]);
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+    geometry.computeVertexNormals();
+    
+    return geometry;
+  }, [landmarks]);
+
+  if (!palmGeometry) return null;
+
+  return (
+    <mesh geometry={palmGeometry}>
+      <meshStandardMaterial 
+        color={color} 
+        roughness={0.6} 
+        metalness={0.1}
+        side={THREE.DoubleSide}
+      />
+    </mesh>
+  );
+};
+
 // Hand with fingers component
 const HandWithFingers = ({
   landmarks,
@@ -195,8 +273,11 @@ const HandWithFingers = ({
 
   return (
     <group>
-      {/* Palm sphere */}
-      <Joint position={wristPos} radius={BODY.handRadius * 0.7} color={COLORS.skin} />
+      {/* Palm mesh */}
+      <PalmMesh landmarks={lms} color={COLORS.skin} />
+      
+      {/* Wrist joint */}
+      <Joint position={wristPos} radius={BODY.handRadius * 0.5} color={COLORS.skin} />
       
       {/* Fingers */}
       <Finger 
