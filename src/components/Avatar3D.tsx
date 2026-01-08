@@ -107,21 +107,25 @@ const solveArmIK = (
   
   // Calculate rotation angles based on direction to target
   // X rotation (pitch): arm up/down
-  // Y rotation (yaw): arm forward/back twist
+  // Y rotation (yaw): arm forward/back twist  
   // Z rotation (roll): arm spread in/out from body
   
   const armPitch = Math.asin(THREE.MathUtils.clamp(-direction.y, -1, 1)); // Negative Y = arm up
-  const armYaw = Math.atan2(direction.z, Math.abs(direction.x) + 0.01); // Positive Z = forward
+  
+  // Force arms to always rotate FORWARD (positive Z direction)
+  // Use absolute Z to ensure both arms go forward, not backward
+  const forwardZ = Math.abs(direction.z); // Always positive = forward
+  const armYaw = Math.atan2(forwardZ, Math.abs(direction.x) + 0.01);
   
   // Arm spread based on X direction
   const armSpread = isLeftArm 
-    ? Math.atan2(-direction.x, -direction.y) + Math.PI * 0.5  // Left arm spreads with negative X
-    : Math.atan2(direction.x, -direction.y) - Math.PI * 0.5;  // Right arm spreads with positive X
+    ? Math.atan2(-direction.x, -direction.y) + Math.PI * 0.5
+    : Math.atan2(direction.x, -direction.y) - Math.PI * 0.5;
   
   return {
     armRotation: {
       x: armPitch - shoulderOffset * 0.5,
-      y: armYaw * 0.5,
+      y: armYaw * 0.5,  // Always positive yaw = forward rotation
       z: armSpread
     },
     elbowBend: Math.PI - elbowAngle,
