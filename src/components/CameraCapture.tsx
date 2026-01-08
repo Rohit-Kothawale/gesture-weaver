@@ -164,39 +164,21 @@ const CameraCapture = ({ onFramesCaptured, onClose }: CameraCaptureProps) => {
       const poseLandmarks = results.poseLandmarks;
       
       if (poseLandmarks && poseLandmarks.length > 0) {
-        // MediaPipe Pose landmark indices:
-        // 11 = left shoulder, 12 = right shoulder
-        // 13 = left elbow, 14 = right elbow
-        // 15 = left wrist, 16 = right wrist
+        // MediaPipe Pose landmark indices (from YOUR perspective):
+        // 11 = YOUR left shoulder, 12 = YOUR right shoulder
+        // 13 = YOUR left elbow, 14 = YOUR right elbow
+        // 15 = YOUR left wrist, 16 = YOUR right wrist
         
-        // Left arm (from camera's perspective, so we mirror)
-        if (poseLandmarks[12] && poseLandmarks[14] && poseLandmarks[16]) {
-          leftArm = {
-            shoulder: [1.0 - poseLandmarks[12].x, poseLandmarks[12].y, poseLandmarks[12].z],
-            elbow: [1.0 - poseLandmarks[14].x, poseLandmarks[14].y, poseLandmarks[14].z],
-            wrist: [1.0 - poseLandmarks[16].x, poseLandmarks[16].y, poseLandmarks[16].z],
-          };
-          
-          // Draw left arm on canvas
-          ctx.strokeStyle = '#ff6b6b';
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          ctx.moveTo(poseLandmarks[12].x * canvasRef.current!.width, poseLandmarks[12].y * canvasRef.current!.height);
-          ctx.lineTo(poseLandmarks[14].x * canvasRef.current!.width, poseLandmarks[14].y * canvasRef.current!.height);
-          ctx.lineTo(poseLandmarks[16].x * canvasRef.current!.width, poseLandmarks[16].y * canvasRef.current!.height);
-          ctx.stroke();
-        }
-        
-        // Right arm (from camera's perspective, so we mirror)
+        // YOUR left arm (landmarks 11, 13, 15)
         if (poseLandmarks[11] && poseLandmarks[13] && poseLandmarks[15]) {
-          rightArm = {
+          leftArm = {
             shoulder: [1.0 - poseLandmarks[11].x, poseLandmarks[11].y, poseLandmarks[11].z],
             elbow: [1.0 - poseLandmarks[13].x, poseLandmarks[13].y, poseLandmarks[13].z],
             wrist: [1.0 - poseLandmarks[15].x, poseLandmarks[15].y, poseLandmarks[15].z],
           };
           
-          // Draw right arm on canvas
-          ctx.strokeStyle = '#4ecdc4';
+          // Draw left arm on canvas
+          ctx.strokeStyle = '#ff6b6b';
           ctx.lineWidth = 3;
           ctx.beginPath();
           ctx.moveTo(poseLandmarks[11].x * canvasRef.current!.width, poseLandmarks[11].y * canvasRef.current!.height);
@@ -204,9 +186,27 @@ const CameraCapture = ({ onFramesCaptured, onClose }: CameraCaptureProps) => {
           ctx.lineTo(poseLandmarks[15].x * canvasRef.current!.width, poseLandmarks[15].y * canvasRef.current!.height);
           ctx.stroke();
         }
+        
+        // YOUR right arm (landmarks 12, 14, 16)
+        if (poseLandmarks[12] && poseLandmarks[14] && poseLandmarks[16]) {
+          rightArm = {
+            shoulder: [1.0 - poseLandmarks[12].x, poseLandmarks[12].y, poseLandmarks[12].z],
+            elbow: [1.0 - poseLandmarks[14].x, poseLandmarks[14].y, poseLandmarks[14].z],
+            wrist: [1.0 - poseLandmarks[16].x, poseLandmarks[16].y, poseLandmarks[16].z],
+          };
+          
+          // Draw right arm on canvas
+          ctx.strokeStyle = '#4ecdc4';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(poseLandmarks[12].x * canvasRef.current!.width, poseLandmarks[12].y * canvasRef.current!.height);
+          ctx.lineTo(poseLandmarks[14].x * canvasRef.current!.width, poseLandmarks[14].y * canvasRef.current!.height);
+          ctx.lineTo(poseLandmarks[16].x * canvasRef.current!.width, poseLandmarks[16].y * canvasRef.current!.height);
+          ctx.stroke();
+        }
       }
 
-      // Process left hand landmarks from Holistic
+      // Process YOUR left hand landmarks from Holistic
       if (results.leftHandLandmarks) {
         const landmarks = results.leftHandLandmarks;
         const color = '#ff6b6b';
@@ -220,11 +220,11 @@ const CameraCapture = ({ onFramesCaptured, onClose }: CameraCaptureProps) => {
           ctx.fill();
         });
 
-        // Mirror X for avatar perspective - left hand from Holistic maps to right in avatar
-        rightHandLandmarks = landmarks.map((lm: any) => [1.0 - lm.x, lm.y, lm.z]);
+        // Mirror X for display - YOUR left hand stays leftHandLandmarks
+        leftHandLandmarks = landmarks.map((lm: any) => [1.0 - lm.x, lm.y, lm.z]);
       }
 
-      // Process right hand landmarks from Holistic
+      // Process YOUR right hand landmarks from Holistic
       if (results.rightHandLandmarks) {
         const landmarks = results.rightHandLandmarks;
         const color = '#4ecdc4';
@@ -238,8 +238,8 @@ const CameraCapture = ({ onFramesCaptured, onClose }: CameraCaptureProps) => {
           ctx.fill();
         });
 
-        // Mirror X for avatar perspective - right hand from Holistic maps to left in avatar
-        leftHandLandmarks = landmarks.map((lm: any) => [1.0 - lm.x, lm.y, lm.z]);
+        // Mirror X for display - YOUR right hand stays rightHandLandmarks
+        rightHandLandmarks = landmarks.map((lm: any) => [1.0 - lm.x, lm.y, lm.z]);
       }
     } else {
       // Original Hands-only processing
