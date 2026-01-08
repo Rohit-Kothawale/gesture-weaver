@@ -285,7 +285,7 @@ const MixamoAvatar = ({ frame }: Avatar3DProps) => {
         );
         bones.rightArm.rotation.y = THREE.MathUtils.lerp(
           bones.rightArm.rotation.y, 
-          -ik.armRotation.y, 
+          ik.armRotation.y,  // Same direction as left - both arms forward
           lerp
         );
       }
