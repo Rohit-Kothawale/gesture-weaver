@@ -456,24 +456,14 @@ const CartoonAvatar = ({ frame }: CartoonAvatarProps) => {
       <Joint position={armPositions.left.shoulder} color={COLORS.body} />
       <Joint position={armPositions.right.shoulder} color={COLORS.body} />
       
-      {/* Left Arm */}
-      <Limb start={armPositions.left.shoulder} end={armPositions.left.elbow} color={COLORS.body} />
-      <Joint position={armPositions.left.elbow} color={COLORS.joint} />
-      <Limb start={armPositions.left.elbow} end={armPositions.left.wrist} color={COLORS.skin} />
-      
-      {/* Left Hand with Fingers */}
+      {/* Left Hand with Fingers (floating, not connected to body) */}
       <HandWithFingers 
         landmarks={frame?.leftHand || null}
         wristPos={armPositions.left.wrist}
         isVisible={leftHandVisible}
       />
       
-      {/* Right Arm */}
-      <Limb start={armPositions.right.shoulder} end={armPositions.right.elbow} color={COLORS.body} />
-      <Joint position={armPositions.right.elbow} color={COLORS.joint} />
-      <Limb start={armPositions.right.elbow} end={armPositions.right.wrist} color={COLORS.skin} />
-      
-      {/* Right Hand with Fingers */}
+      {/* Right Hand with Fingers (floating, not connected to body) */}
       <HandWithFingers 
         landmarks={frame?.rightHand || null}
         wristPos={armPositions.right.wrist}
