@@ -103,6 +103,13 @@ export const useSignAnimation = (): UseSignAnimationReturn => {
     for (let i = 0; i < 21; i++) {
       headers.push(`R_x${i}`, `R_y${i}`, `R_z${i}`);
     }
+    // Add arm headers
+    headers.push('LA_shoulder_x', 'LA_shoulder_y', 'LA_shoulder_z');
+    headers.push('LA_elbow_x', 'LA_elbow_y', 'LA_elbow_z');
+    headers.push('LA_wrist_x', 'LA_wrist_y', 'LA_wrist_z');
+    headers.push('RA_shoulder_x', 'RA_shoulder_y', 'RA_shoulder_z');
+    headers.push('RA_elbow_x', 'RA_elbow_y', 'RA_elbow_z');
+    headers.push('RA_wrist_x', 'RA_wrist_y', 'RA_wrist_z');
 
     // Build CSV rows
     const rows = frames.map(frame => {
@@ -124,6 +131,24 @@ export const useSignAnimation = (): UseSignAnimationReturn => {
         } else {
           row.push(0, 0, 0);
         }
+      }
+      
+      // Left arm landmarks
+      if (frame.leftArm) {
+        row.push(frame.leftArm.shoulder[0], frame.leftArm.shoulder[1], frame.leftArm.shoulder[2]);
+        row.push(frame.leftArm.elbow[0], frame.leftArm.elbow[1], frame.leftArm.elbow[2]);
+        row.push(frame.leftArm.wrist[0], frame.leftArm.wrist[1], frame.leftArm.wrist[2]);
+      } else {
+        row.push(0, 0, 0, 0, 0, 0, 0, 0, 0);
+      }
+      
+      // Right arm landmarks
+      if (frame.rightArm) {
+        row.push(frame.rightArm.shoulder[0], frame.rightArm.shoulder[1], frame.rightArm.shoulder[2]);
+        row.push(frame.rightArm.elbow[0], frame.rightArm.elbow[1], frame.rightArm.elbow[2]);
+        row.push(frame.rightArm.wrist[0], frame.rightArm.wrist[1], frame.rightArm.wrist[2]);
+      } else {
+        row.push(0, 0, 0, 0, 0, 0, 0, 0, 0);
       }
       
       return row.join(',');

@@ -357,7 +357,7 @@ const CameraCapture = ({ onFramesCaptured, onClose }: CameraCaptureProps) => {
   const downloadCSV = () => {
     if (recordedFrames.length === 0) return;
 
-    // Generate CSV header
+    // Generate CSV header with arm data
     let header = 'label';
     for (let i = 0; i < 21; i++) {
       header += `,L_x${i},L_y${i},L_z${i}`;
@@ -365,6 +365,13 @@ const CameraCapture = ({ onFramesCaptured, onClose }: CameraCaptureProps) => {
     for (let i = 0; i < 21; i++) {
       header += `,R_x${i},R_y${i},R_z${i}`;
     }
+    // Add arm headers
+    header += ',LA_shoulder_x,LA_shoulder_y,LA_shoulder_z';
+    header += ',LA_elbow_x,LA_elbow_y,LA_elbow_z';
+    header += ',LA_wrist_x,LA_wrist_y,LA_wrist_z';
+    header += ',RA_shoulder_x,RA_shoulder_y,RA_shoulder_z';
+    header += ',RA_elbow_x,RA_elbow_y,RA_elbow_z';
+    header += ',RA_wrist_x,RA_wrist_y,RA_wrist_z';
 
     // Generate CSV rows
     const rows = recordedFrames.map(frame => {
@@ -375,6 +382,25 @@ const CameraCapture = ({ onFramesCaptured, onClose }: CameraCaptureProps) => {
       frame.rightHand.forEach(([x, y, z]) => {
         row += `,${x},${y},${z}`;
       });
+      
+      // Add left arm data
+      if (frame.leftArm) {
+        row += `,${frame.leftArm.shoulder[0]},${frame.leftArm.shoulder[1]},${frame.leftArm.shoulder[2]}`;
+        row += `,${frame.leftArm.elbow[0]},${frame.leftArm.elbow[1]},${frame.leftArm.elbow[2]}`;
+        row += `,${frame.leftArm.wrist[0]},${frame.leftArm.wrist[1]},${frame.leftArm.wrist[2]}`;
+      } else {
+        row += ',0,0,0,0,0,0,0,0,0';
+      }
+      
+      // Add right arm data
+      if (frame.rightArm) {
+        row += `,${frame.rightArm.shoulder[0]},${frame.rightArm.shoulder[1]},${frame.rightArm.shoulder[2]}`;
+        row += `,${frame.rightArm.elbow[0]},${frame.rightArm.elbow[1]},${frame.rightArm.elbow[2]}`;
+        row += `,${frame.rightArm.wrist[0]},${frame.rightArm.wrist[1]},${frame.rightArm.wrist[2]}`;
+      } else {
+        row += ',0,0,0,0,0,0,0,0,0';
+      }
+      
       return row;
     });
 
