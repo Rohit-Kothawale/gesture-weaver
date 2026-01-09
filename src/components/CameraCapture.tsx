@@ -76,7 +76,7 @@ const CameraCapture = ({ onFramesCaptured, onClose }: CameraCaptureProps) => {
         
         const holistic = new HolisticClass({
           locateFile: (file: string) => {
-            return `https://cdn.jsdelivr.net/npm/@mediapipe/holistic@0.5.1675471629/${file}`;
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`;
           }
         });
 
@@ -136,6 +136,7 @@ const CameraCapture = ({ onFramesCaptured, onClose }: CameraCaptureProps) => {
     };
 
     loadMediaPipe();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Process hand tracking results (supports both Holistic and Hands-only)
