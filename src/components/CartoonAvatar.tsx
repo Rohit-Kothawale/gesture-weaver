@@ -341,7 +341,21 @@ const CartoonAvatar = ({ frame }: CartoonAvatarProps) => {
   const leftHandVisible = frame?.leftHand ? isHandVisible(frame.leftHand) : false;
   const rightHandVisible = frame?.rightHand ? isHandVisible(frame.rightHand) : false;
   
-  // Calculate arm positions based on hand landmarks
+  // Check if we have tracked arm data
+  const hasLeftArmData = frame?.leftArm && 
+    (frame.leftArm.shoulder[0] !== 0 || frame.leftArm.shoulder[1] !== 0);
+  const hasRightArmData = frame?.rightArm && 
+    (frame.rightArm.shoulder[0] !== 0 || frame.rightArm.shoulder[1] !== 0);
+  
+  // Convert tracked arm coordinates to 3D space
+  const normalizeArmPoint = (coord: [number, number, number], scale: number = 1.2): THREE.Vector3 => {
+    const x = (coord[0] - 0.5) * scale;
+    const y = (0.5 - coord[1]) * scale * 0.8 + 0.1;
+    const z = 0.25 + Math.max(0, -coord[2]) * 0.15;
+    return new THREE.Vector3(x, y, z);
+  };
+  
+  // Calculate arm positions based on tracked arm data or hand landmarks
   const armPositions = useMemo(() => {
     const defaultLeft = {
       shoulder: new THREE.Vector3(-BODY.torsoWidth * 0.5, BODY.torsoLength * 0.4, 0),
@@ -358,7 +372,15 @@ const CartoonAvatar = ({ frame }: CartoonAvatarProps) => {
     let left = { ...defaultLeft };
     let right = { ...defaultRight };
     
-    if (leftHandVisible && frame?.leftHand) {
+    // Use tracked arm data if available
+    if (hasLeftArmData && frame?.leftArm) {
+      left = {
+        shoulder: normalizeArmPoint(frame.leftArm.shoulder),
+        elbow: normalizeArmPoint(frame.leftArm.elbow),
+        wrist: normalizeArmPoint(frame.leftArm.wrist),
+      };
+    } else if (leftHandVisible && frame?.leftHand) {
+      // Fallback: Calculate arm from hand position
       const handPos = normalizeLandmarks(frame.leftHand, 1.2);
       handPos.y += 0.1;
       
@@ -377,7 +399,15 @@ const CartoonAvatar = ({ frame }: CartoonAvatarProps) => {
       left.wrist = handPos;
     }
     
-    if (rightHandVisible && frame?.rightHand) {
+    // Use tracked arm data if available
+    if (hasRightArmData && frame?.rightArm) {
+      right = {
+        shoulder: normalizeArmPoint(frame.rightArm.shoulder),
+        elbow: normalizeArmPoint(frame.rightArm.elbow),
+        wrist: normalizeArmPoint(frame.rightArm.wrist),
+      };
+    } else if (rightHandVisible && frame?.rightHand) {
+      // Fallback: Calculate arm from hand position
       const handPos = normalizeLandmarks(frame.rightHand, 1.2);
       handPos.y += 0.1;
       
@@ -397,7 +427,7 @@ const CartoonAvatar = ({ frame }: CartoonAvatarProps) => {
     }
     
     return { left, right };
-  }, [frame, leftHandVisible, rightHandVisible]);
+  }, [frame, leftHandVisible, rightHandVisible, hasLeftArmData, hasRightArmData]);
   
   // Static body positions
   const positions = useMemo(() => {
@@ -456,14 +486,24 @@ const CartoonAvatar = ({ frame }: CartoonAvatarProps) => {
       <Joint position={armPositions.left.shoulder} color={COLORS.body} />
       <Joint position={armPositions.right.shoulder} color={COLORS.body} />
       
-      {/* Left Hand with Fingers (floating, not connected to body) */}
+      {/* Left Arm - connected from shoulder to elbow to wrist */}
+      <Limb start={armPositions.left.shoulder} end={armPositions.left.elbow} color={COLORS.body} />
+      <Joint position={armPositions.left.elbow} color={COLORS.skin} />
+      <Limb start={armPositions.left.elbow} end={armPositions.left.wrist} color={COLORS.skin} />
+      
+      {/* Right Arm - connected from shoulder to elbow to wrist */}
+      <Limb start={armPositions.right.shoulder} end={armPositions.right.elbow} color={COLORS.body} />
+      <Joint position={armPositions.right.elbow} color={COLORS.skin} />
+      <Limb start={armPositions.right.elbow} end={armPositions.right.wrist} color={COLORS.skin} />
+      
+      {/* Left Hand with Fingers (connected to wrist) */}
       <HandWithFingers 
         landmarks={frame?.leftHand || null}
         wristPos={armPositions.left.wrist}
         isVisible={leftHandVisible}
       />
       
-      {/* Right Hand with Fingers (floating, not connected to body) */}
+      {/* Right Hand with Fingers (connected to wrist) */}
       <HandWithFingers 
         landmarks={frame?.rightHand || null}
         wristPos={armPositions.right.wrist}
