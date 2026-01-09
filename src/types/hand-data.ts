@@ -49,10 +49,34 @@ export const parseCSVRow = (row: RawCSVRow): HandFrame => {
     rightHand.push([rx, ry, rz]);
   }
 
+  // Parse arm landmarks if present
+  let leftArm: ArmLandmarks | undefined;
+  let rightArm: ArmLandmarks | undefined;
+
+  // Check for left arm data
+  if (row['LA_shoulder_x'] !== undefined) {
+    leftArm = {
+      shoulder: [Number(row['LA_shoulder_x']) || 0, Number(row['LA_shoulder_y']) || 0, Number(row['LA_shoulder_z']) || 0],
+      elbow: [Number(row['LA_elbow_x']) || 0, Number(row['LA_elbow_y']) || 0, Number(row['LA_elbow_z']) || 0],
+      wrist: [Number(row['LA_wrist_x']) || 0, Number(row['LA_wrist_y']) || 0, Number(row['LA_wrist_z']) || 0],
+    };
+  }
+
+  // Check for right arm data
+  if (row['RA_shoulder_x'] !== undefined) {
+    rightArm = {
+      shoulder: [Number(row['RA_shoulder_x']) || 0, Number(row['RA_shoulder_y']) || 0, Number(row['RA_shoulder_z']) || 0],
+      elbow: [Number(row['RA_elbow_x']) || 0, Number(row['RA_elbow_y']) || 0, Number(row['RA_elbow_z']) || 0],
+      wrist: [Number(row['RA_wrist_x']) || 0, Number(row['RA_wrist_y']) || 0, Number(row['RA_wrist_z']) || 0],
+    };
+  }
+
   return {
     label: String(row.label),
     leftHand,
     rightHand,
+    leftArm,
+    rightArm,
   };
 };
 
