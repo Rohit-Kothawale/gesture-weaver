@@ -62,55 +62,77 @@ const CameraCapture = ({ onFramesCaptured, onClose }: CameraCaptureProps) => {
     };
   }, []);
 
-  // Initialize MediaPipe Holistic for full body + hands tracking
+  // Initialize MediaPipe using script tag loading (more reliable than npm imports)
   useEffect(() => {
     const loadMediaPipe = async () => {
       try {
-        // Load Holistic from CDN for full body tracking
-        const holisticModule = await import('@mediapipe/holistic');
-        const HolisticClass = holisticModule.Holistic || (holisticModule as any).default?.Holistic;
-        
-        if (!HolisticClass) {
-          throw new Error('Holistic class not found in module');
-        }
-        
-        const holistic = new HolisticClass({
-          locateFile: (file: string) => {
-            return `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`;
-          }
-        });
+        // Load MediaPipe Holistic via script tag
+        const loadScript = (src: string): Promise<void> => {
+          return new Promise((resolve, reject) => {
+            // Check if already loaded
+            if (document.querySelector(`script[src="${src}"]`)) {
+              resolve();
+              return;
+            }
+            const script = document.createElement('script');
+            script.src = src;
+            script.crossOrigin = 'anonymous';
+            script.onload = () => resolve();
+            script.onerror = () => reject(new Error(`Failed to load script: ${src}`));
+            document.head.appendChild(script);
+          });
+        };
 
-        holistic.setOptions({
-          modelComplexity: 1,
-          smoothLandmarks: true,
-          enableSegmentation: false,
-          smoothSegmentation: false,
-          refineFaceLandmarks: false,
-          minDetectionConfidence: 0.5,
-          minTrackingConfidence: 0.5
-        });
-
-        holistic.onResults((results: any) => {
-          processResults(results);
-        });
-
-        handsRef.current = holistic;
-        console.log('MediaPipe Holistic loaded successfully');
-        setIsMediaPipeReady(true);
-      } catch (err) {
-        console.error('MediaPipe Holistic load error, falling back to Hands:', err);
-        // Fallback to Hands-only
+        // Try loading Holistic first
         try {
-          const handsModule = await import('@mediapipe/hands');
-          const HandsClass = handsModule.Hands || (handsModule as any).default?.Hands;
+          await loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/holistic@0.5.1675471629/holistic.js');
+          
+          // @ts-ignore - Holistic is loaded globally
+          const HolisticClass = window.Holistic;
+          
+          if (!HolisticClass) {
+            throw new Error('Holistic class not found on window');
+          }
+          
+          const holistic = new HolisticClass({
+            locateFile: (file: string) => {
+              return `https://cdn.jsdelivr.net/npm/@mediapipe/holistic@0.5.1675471629/${file}`;
+            }
+          });
+
+          holistic.setOptions({
+            modelComplexity: 1,
+            smoothLandmarks: true,
+            enableSegmentation: false,
+            smoothSegmentation: false,
+            refineFaceLandmarks: false,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+          });
+
+          holistic.onResults((results: any) => {
+            processResults(results);
+          });
+
+          handsRef.current = holistic;
+          console.log('MediaPipe Holistic loaded successfully');
+          setIsMediaPipeReady(true);
+        } catch (holisticErr) {
+          console.error('MediaPipe Holistic load error, falling back to Hands:', holisticErr);
+          
+          // Fallback to Hands-only
+          await loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js');
+          
+          // @ts-ignore - Hands is loaded globally
+          const HandsClass = window.Hands;
           
           if (!HandsClass) {
-            throw new Error('Hands class not found in module');
+            throw new Error('Hands class not found on window');
           }
           
           const hands = new HandsClass({
             locateFile: (file: string) => {
-              return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+              return `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${file}`;
             }
           });
 
@@ -128,10 +150,10 @@ const CameraCapture = ({ onFramesCaptured, onClose }: CameraCaptureProps) => {
           handsRef.current = hands;
           console.log('MediaPipe Hands loaded (fallback)');
           setIsMediaPipeReady(true);
-        } catch (fallbackErr) {
-          console.error('MediaPipe load error:', fallbackErr);
-          setError('Failed to load hand tracking. Please refresh the page.');
         }
+      } catch (err) {
+        console.error('MediaPipe load error:', err);
+        setError('Failed to load hand tracking. Please refresh the page.');
       }
     };
 
