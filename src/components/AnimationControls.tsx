@@ -25,10 +25,10 @@ const AnimationControls = ({
   disabled = false,
 }: AnimationControlsProps) => {
   return (
-    <div className="glass-panel p-4 space-y-4">
+    <div className="glass-panel p-3 sm:p-4 space-y-3 sm:space-y-4">
       {/* Progress bar */}
-      <div className="space-y-2">
-        <div className="flex justify-between text-xs font-mono text-muted-foreground">
+      <div className="space-y-1.5 sm:space-y-2">
+        <div className="flex justify-between text-[10px] sm:text-xs font-mono text-muted-foreground">
           <span>Frame {currentFrame + 1}</span>
           <span>{totalFrames} total</span>
         </div>
@@ -43,53 +43,53 @@ const AnimationControls = ({
       </div>
 
       {/* Control buttons */}
-      <div className="flex items-center justify-center gap-2">
+      <div className="flex items-center justify-center gap-1.5 sm:gap-2">
         <button
           onClick={() => onFrameChange(0)}
           disabled={disabled}
-          className="control-button p-2"
+          className="control-button p-1.5 sm:p-2"
           title="First frame"
         >
-          <ChevronFirst className="w-5 h-5" />
+          <ChevronFirst className="w-4 h-4 sm:w-5 sm:h-5" />
         </button>
 
         <button
           onClick={onReset}
           disabled={disabled}
-          className="control-button p-2"
+          className="control-button p-1.5 sm:p-2"
           title="Reset"
         >
-          <RotateCcw className="w-5 h-5" />
+          <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5" />
         </button>
 
         <button
           onClick={onPlayPause}
           disabled={disabled}
-          className="control-button-primary p-3 rounded-full"
+          className="control-button-primary p-2.5 sm:p-3 rounded-full"
           title={isPlaying ? 'Pause' : 'Play'}
         >
           {isPlaying ? (
-            <Pause className="w-6 h-6" />
+            <Pause className="w-5 h-5 sm:w-6 sm:h-6" />
           ) : (
-            <Play className="w-6 h-6 ml-0.5" />
+            <Play className="w-5 h-5 sm:w-6 sm:h-6 ml-0.5" />
           )}
         </button>
 
         <button
           onClick={() => onFrameChange(Math.max(0, totalFrames - 1))}
           disabled={disabled}
-          className="control-button p-2"
+          className="control-button p-1.5 sm:p-2"
           title="Last frame"
         >
-          <ChevronLast className="w-5 h-5" />
+          <ChevronLast className="w-4 h-4 sm:w-5 sm:h-5" />
         </button>
       </div>
 
       {/* Speed Control */}
-      <div className="space-y-2 pt-2 border-t border-border/50">
-        <div className="flex items-center justify-between text-xs font-mono text-muted-foreground">
-          <div className="flex items-center gap-1.5">
-            <Gauge className="w-3.5 h-3.5" />
+      <div className="space-y-1.5 sm:space-y-2 pt-2 border-t border-border/50">
+        <div className="flex items-center justify-between text-[10px] sm:text-xs font-mono text-muted-foreground">
+          <div className="flex items-center gap-1 sm:gap-1.5">
+            <Gauge className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
             <span>Speed</span>
           </div>
           <span className="text-primary font-semibold">{fps} FPS</span>
