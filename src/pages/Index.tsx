@@ -40,7 +40,7 @@ const Index = () => {
 
   // Load sample data on mount
   useEffect(() => {
-    loadFromUrl('/data/Happy_sign_data.csv');
+    loadFromUrl(`${import.meta.env.BASE_URL}data/Happy_sign_data.csv`);
   }, [loadFromUrl]);
 
   return (
