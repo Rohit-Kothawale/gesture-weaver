@@ -17,7 +17,6 @@ const Index = () => {
   const [showCamera, setShowCamera] = useState(false);
   const [showArms, setShowArms] = useState(true);
   const [videoFile, setVideoFile] = useState<{ file: File; url: string } | null>(null);
-  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const {
     frames,
     currentFrame,
@@ -99,7 +98,6 @@ const Index = () => {
                   URL.revokeObjectURL(videoFile.url);
                 }
                 setVideoFile(null);
-                setIsVideoPlaying(false);
               }}
             />
           </div>
@@ -197,10 +195,11 @@ const Index = () => {
                 onClose={() => {
                   URL.revokeObjectURL(videoFile.url);
                   setVideoFile(null);
-                  setIsVideoPlaying(false);
                 }}
-                isPlaying={isVideoPlaying}
-                onPlayPause={() => setIsVideoPlaying(!isVideoPlaying)}
+                isPlaying={isPlaying}
+                currentFrame={currentFrame}
+                totalFrames={frames.length}
+                fps={fps}
               />
             )}
 
