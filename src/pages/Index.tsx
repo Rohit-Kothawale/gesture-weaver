@@ -3,6 +3,8 @@ import { Hand, User, Layers, Camera, Download, Bone } from 'lucide-react';
 import HandVisualization from '@/components/HandVisualization';
 import AvatarVisualization from '@/components/AvatarVisualization';
 import FileUpload from '@/components/FileUpload';
+import VideoUpload from '@/components/VideoUpload';
+import VideoPlayer from '@/components/VideoPlayer';
 import CameraCapture from '@/components/CameraCapture';
 import AnimationControls from '@/components/AnimationControls';
 import StatusPanel from '@/components/StatusPanel';
@@ -14,6 +16,8 @@ const Index = () => {
   const [viewMode, setViewMode] = useState<'hands' | 'avatar'>('avatar');
   const [showCamera, setShowCamera] = useState(false);
   const [showArms, setShowArms] = useState(true);
+  const [videoFile, setVideoFile] = useState<{ file: File; url: string } | null>(null);
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const {
     frames,
     currentFrame,
@@ -85,6 +89,18 @@ const Index = () => {
               onFileUpload={loadFile}
               hasData={frames.length > 0}
               fileName={fileName || undefined}
+            />
+            <VideoUpload
+              onVideoUpload={(file, url) => setVideoFile({ file, url })}
+              hasVideo={!!videoFile}
+              videoName={videoFile?.file.name}
+              onClearVideo={() => {
+                if (videoFile?.url) {
+                  URL.revokeObjectURL(videoFile.url);
+                }
+                setVideoFile(null);
+                setIsVideoPlaying(false);
+              }}
             />
           </div>
         </header>
@@ -173,6 +189,21 @@ const Index = () => {
 
           {/* Sidebar - Collapsible sections on mobile */}
           <div className="space-y-3 sm:space-y-4">
+            {/* Video Player - Show when video is uploaded */}
+            {videoFile && (
+              <VideoPlayer
+                videoUrl={videoFile.url}
+                videoName={videoFile.file.name}
+                onClose={() => {
+                  URL.revokeObjectURL(videoFile.url);
+                  setVideoFile(null);
+                  setIsVideoPlaying(false);
+                }}
+                isPlaying={isVideoPlaying}
+                onPlayPause={() => setIsVideoPlaying(!isVideoPlaying)}
+              />
+            )}
+
             <AnimationControls
               isPlaying={isPlaying}
               currentFrame={currentFrame}
