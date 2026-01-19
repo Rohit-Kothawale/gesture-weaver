@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Loader2, Play, CheckCircle2, XCircle } from 'lucide-react';
+import { Loader2, Play, CheckCircle2, XCircle, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { HandFrame } from '@/types/hand-data';
@@ -213,6 +213,83 @@ const VideoProcessor = ({ videoUrl, videoName, onProcessingComplete, onClose }: 
     }
   };
 
+  // Download CSV directly from processed frames
+  const handleDownloadCSV = () => {
+    if (processedFrames.length === 0) return;
+
+    const label = videoName.replace(/\.[^/.]+$/, '');
+    
+    // Build CSV header
+    const headers = ['label'];
+    for (let i = 0; i < 21; i++) {
+      headers.push(`L_x${i}`, `L_y${i}`, `L_z${i}`);
+    }
+    for (let i = 0; i < 21; i++) {
+      headers.push(`R_x${i}`, `R_y${i}`, `R_z${i}`);
+    }
+    // Add arm headers
+    headers.push('LA_shoulder_x', 'LA_shoulder_y', 'LA_shoulder_z');
+    headers.push('LA_elbow_x', 'LA_elbow_y', 'LA_elbow_z');
+    headers.push('LA_wrist_x', 'LA_wrist_y', 'LA_wrist_z');
+    headers.push('RA_shoulder_x', 'RA_shoulder_y', 'RA_shoulder_z');
+    headers.push('RA_elbow_x', 'RA_elbow_y', 'RA_elbow_z');
+    headers.push('RA_wrist_x', 'RA_wrist_y', 'RA_wrist_z');
+
+    // Build CSV rows
+    const rows = processedFrames.map(frame => {
+      const row: (string | number)[] = [frame.label];
+      
+      // Left hand landmarks
+      for (let i = 0; i < 21; i++) {
+        if (frame.leftHand && frame.leftHand[i]) {
+          row.push(frame.leftHand[i][0], frame.leftHand[i][1], frame.leftHand[i][2]);
+        } else {
+          row.push(0, 0, 0);
+        }
+      }
+      
+      // Right hand landmarks
+      for (let i = 0; i < 21; i++) {
+        if (frame.rightHand && frame.rightHand[i]) {
+          row.push(frame.rightHand[i][0], frame.rightHand[i][1], frame.rightHand[i][2]);
+        } else {
+          row.push(0, 0, 0);
+        }
+      }
+      
+      // Left arm landmarks
+      if (frame.leftArm) {
+        row.push(frame.leftArm.shoulder[0], frame.leftArm.shoulder[1], frame.leftArm.shoulder[2]);
+        row.push(frame.leftArm.elbow[0], frame.leftArm.elbow[1], frame.leftArm.elbow[2]);
+        row.push(frame.leftArm.wrist[0], frame.leftArm.wrist[1], frame.leftArm.wrist[2]);
+      } else {
+        row.push(0, 0, 0, 0, 0, 0, 0, 0, 0);
+      }
+      
+      // Right arm landmarks
+      if (frame.rightArm) {
+        row.push(frame.rightArm.shoulder[0], frame.rightArm.shoulder[1], frame.rightArm.shoulder[2]);
+        row.push(frame.rightArm.elbow[0], frame.rightArm.elbow[1], frame.rightArm.elbow[2]);
+        row.push(frame.rightArm.wrist[0], frame.rightArm.wrist[1], frame.rightArm.wrist[2]);
+      } else {
+        row.push(0, 0, 0, 0, 0, 0, 0, 0, 0);
+      }
+      
+      return row.join(',');
+    });
+
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${label}_landmarks.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="glass-panel p-4 space-y-4">
       <div className="flex items-center justify-between">
@@ -279,10 +356,16 @@ const VideoProcessor = ({ videoUrl, videoName, onProcessingComplete, onClose }: 
         )}
         
         {status === 'complete' && processedFrames.length > 0 && (
-          <Button onClick={handleUseFrames} className="flex-1">
-            <CheckCircle2 className="w-4 h-4 mr-2" />
-            Use Extracted Frames ({processedFrames.length})
-          </Button>
+          <>
+            <Button onClick={handleUseFrames} className="flex-1">
+              <CheckCircle2 className="w-4 h-4 mr-2" />
+              Use Frames ({processedFrames.length})
+            </Button>
+            <Button onClick={handleDownloadCSV} variant="secondary">
+              <Download className="w-4 h-4 mr-2" />
+              Download CSV
+            </Button>
+          </>
         )}
         
         <Button onClick={onClose} variant="outline">
