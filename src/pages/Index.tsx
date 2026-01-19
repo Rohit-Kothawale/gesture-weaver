@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Hand, User, Layers, Camera, Download, Bone } from 'lucide-react';
+import { Hand, User, Layers, Camera, Download, Bone, Wand2 } from 'lucide-react';
 import HandVisualization from '@/components/HandVisualization';
 import AvatarVisualization from '@/components/AvatarVisualization';
 import FileUpload from '@/components/FileUpload';
 import VideoUpload from '@/components/VideoUpload';
 import VideoPlayer from '@/components/VideoPlayer';
+import VideoProcessor from '@/components/VideoProcessor';
 import CameraCapture from '@/components/CameraCapture';
 import AnimationControls from '@/components/AnimationControls';
 import StatusPanel from '@/components/StatusPanel';
@@ -17,6 +18,7 @@ const Index = () => {
   const [showCamera, setShowCamera] = useState(false);
   const [showArms, setShowArms] = useState(true);
   const [videoFile, setVideoFile] = useState<{ file: File; url: string } | null>(null);
+  const [showVideoProcessor, setShowVideoProcessor] = useState(false);
   const {
     frames,
     currentFrame,
@@ -98,8 +100,20 @@ const Index = () => {
                   URL.revokeObjectURL(videoFile.url);
                 }
                 setVideoFile(null);
+                setShowVideoProcessor(false);
               }}
             />
+            {videoFile && (
+              <Button
+                onClick={() => setShowVideoProcessor(true)}
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-1.5 sm:gap-2 whitespace-nowrap"
+              >
+                <Wand2 className="w-4 h-4" />
+                <span className="hidden xs:inline">Extract Landmarks</span>
+              </Button>
+            )}
           </div>
         </header>
 
@@ -162,6 +176,23 @@ const Index = () => {
                   loadFrames(capturedFrames, `${label}_captured.csv`);
                 }}
                 onClose={() => setShowCamera(false)}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Video Processor Modal */}
+        {showVideoProcessor && videoFile && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-2xl">
+              <VideoProcessor
+                videoUrl={videoFile.url}
+                videoName={videoFile.file.name}
+                onProcessingComplete={(extractedFrames, label) => {
+                  loadFrames(extractedFrames, `${label}_extracted.csv`);
+                  setShowVideoProcessor(false);
+                }}
+                onClose={() => setShowVideoProcessor(false)}
               />
             </div>
           </div>
