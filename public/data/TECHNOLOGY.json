@@ -1,0 +1,281 @@
+{
+  "word": "TECHNOLOGY",
+  "landmark": [
+    {
+      "keypoints": {
+        "rightupperarm": {
+          "x": 0.3,
+          "y": -0.3,
+          "z": 0.1
+        },
+        "rightlowerarm": {
+          "x": 0,
+          "y": 0.2,
+          "z": 1.8
+        },
+        "rightarm": {
+          "x": 0.7,
+          "y": 0,
+          "z": 0
+        },
+        "rightthumb": {
+          "x": -0.6,
+          "y": 0.6,
+          "z": 0.6
+        },
+        "rightindexfinger3": {
+          "x": 0,
+          "y": -0.5,
+          "z": 0
+        },
+        "rightmiddlefinger3": {
+          "x": 0,
+          "y": 1.5,
+          "z": 0
+        },
+        "rightringfinger3": {
+          "x": 0,
+          "y": -0.5,
+          "z": 0
+        },
+        "rightlittlefinger3": {
+          "x": 0,
+          "y": -0.5,
+          "z": 0
+        },
+        "leftshoulder": {
+          "x": 0,
+          "y": -0.3,
+          "z": -0.1
+        },
+        "leftupperarm": {
+          "x": -0.1,
+          "y": -0.2,
+          "z": 0.4
+        },
+        "leftlowerarm": {
+          "x": 0,
+          "y": 0,
+          "z": 1.9
+        },
+        "lefthand": {
+          "x": 0.5,
+          "y": -0.6,
+          "z": 1.2
+        },
+        "leftthumb": {
+          "x": 0,
+          "y": 0.1,
+          "z": 0
+        }
+      }
+    },
+    {
+      "keypoints": {
+        "rightupperarm": {
+          "x": 0.3,
+          "y": -0.6,
+          "z": 0.3
+        },
+        "rightlowerarm": {
+          "x": 0,
+          "y": -0.1,
+          "z": 1.8
+        },
+        "rightarm": {
+          "x": 0.7,
+          "y": -0.5,
+          "z": 0
+        },
+        "rightthumb": {
+          "x": -0.6,
+          "y": 0,
+          "z": 0.6
+        },
+        "rightindexfinger3": {
+          "x": 0,
+          "y": -0.5,
+          "z": 0
+        },
+        "rightmiddlefinger3": {
+          "x": 0,
+          "y": 1.5,
+          "z": 0
+        },
+        "rightringfinger3": {
+          "x": 0,
+          "y": -0.5,
+          "z": 0
+        },
+        "rightlittlefinger3": {
+          "x": 0,
+          "y": -0.4,
+          "z": 0
+        },
+        "leftshoulder": {
+          "x": 0,
+          "y": -0.3,
+          "z": -0.1
+        },
+        "leftupperarm": {
+          "x": -0.1,
+          "y": -0.2,
+          "z": 0.4
+        },
+        "leftlowerarm": {
+          "x": 0,
+          "y": 0,
+          "z": 1.9
+        },
+        "lefthand": {
+          "x": 0.5,
+          "y": -0.5,
+          "z": 1.2
+        },
+        "leftthumb": {
+          "x": 0,
+          "y": 0.1,
+          "z": 0
+        }
+      }
+    },
+    {
+      "keypoints": {
+        "rightupperarm": {
+          "x": 0.3,
+          "y": -0.3,
+          "z": 0.1
+        },
+        "rightlowerarm": {
+          "x": 0,
+          "y": 0.2,
+          "z": 1.8
+        },
+        "rightarm": {
+          "x": 0.7,
+          "y": 0,
+          "z": 0
+        },
+        "rightthumb": {
+          "x": -0.6,
+          "y": 0.6,
+          "z": 0.6
+        },
+        "rightindexfinger3": {
+          "x": 0,
+          "y": -0.5,
+          "z": 0
+        },
+        "rightmiddlefinger3": {
+          "x": 0,
+          "y": 1.5,
+          "z": 0
+        },
+        "rightringfinger3": {
+          "x": 0,
+          "y": -0.5,
+          "z": 0
+        },
+        "rightlittlefinger3": {
+          "x": 0,
+          "y": -0.5,
+          "z": 0
+        },
+        "leftshoulder": {
+          "x": 0,
+          "y": -0.3,
+          "z": -0.1
+        },
+        "leftupperarm": {
+          "x": -0.1,
+          "y": -0.2,
+          "z": 0.4
+        },
+        "leftlowerarm": {
+          "x": 0,
+          "y": 0,
+          "z": 1.9
+        },
+        "lefthand": {
+          "x": 0.7,
+          "y": -0.6,
+          "z": 1.2
+        },
+        "leftthumb": {
+          "x": 0,
+          "y": 0.1,
+          "z": 0
+        }
+      }
+    },
+    {
+      "keypoints": {
+        "rightupperarm": {
+          "x": 0.3,
+          "y": -0.6,
+          "z": 0.3
+        },
+        "rightlowerarm": {
+          "x": 0,
+          "y": -0.1,
+          "z": 1.8
+        },
+        "rightarm": {
+          "x": 0.7,
+          "y": -0.5,
+          "z": 0
+        },
+        "rightthumb": {
+          "x": -0.6,
+          "y": 0,
+          "z": 0.6
+        },
+        "rightindexfinger3": {
+          "x": 0,
+          "y": -0.5,
+          "z": 0
+        },
+        "rightmiddlefinger3": {
+          "x": 0,
+          "y": 1.5,
+          "z": 0
+        },
+        "rightringfinger3": {
+          "x": 0,
+          "y": -0.5,
+          "z": 0
+        },
+        "rightlittlefinger3": {
+          "x": 0,
+          "y": -0.4,
+          "z": 0
+        },
+        "leftshoulder": {
+          "x": 0,
+          "y": -0.3,
+          "z": -0.1
+        },
+        "leftupperarm": {
+          "x": -0.1,
+          "y": -0.2,
+          "z": 0.4
+        },
+        "leftlowerarm": {
+          "x": 0,
+          "y": 0,
+          "z": 1.9
+        },
+        "lefthand": {
+          "x": 0.5,
+          "y": -0.5,
+          "z": 1.2
+        },
+        "leftthumb": {
+          "x": 0,
+          "y": 0.1,
+          "z": 0
+        }
+      }
+    }
+  ]
+}
