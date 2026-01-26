@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Hand, User, Layers, Camera, Download, Bone, Wand2 } from 'lucide-react';
+import { Hand, User, Layers, Camera, Download, Bone, Wand2, FileJson } from 'lucide-react';
+import { downloadAvatarJSON } from '@/utils/avatarJsonExport';
 import HandVisualization from '@/components/HandVisualization';
 import AvatarVisualization from '@/components/AvatarVisualization';
 import FileUpload from '@/components/FileUpload';
@@ -84,7 +85,17 @@ const Index = () => {
               disabled={frames.length === 0}
             >
               <Download className="w-4 h-4" />
-              <span className="hidden xs:inline">Download</span>
+              <span className="hidden xs:inline">CSV</span>
+            </Button>
+            <Button
+              onClick={() => downloadAvatarJSON(frames, fps, fileName?.replace(/\.[^/.]+$/, '') || 'avatar_animation')}
+              variant="outline"
+              size="sm"
+              className="flex items-center gap-1.5 sm:gap-2 whitespace-nowrap"
+              disabled={frames.length === 0}
+            >
+              <FileJson className="w-4 h-4" />
+              <span className="hidden xs:inline">JSON</span>
             </Button>
             <FileUpload
               onFileUpload={loadFile}
