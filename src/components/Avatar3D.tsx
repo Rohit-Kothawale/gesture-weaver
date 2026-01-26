@@ -515,7 +515,7 @@ const MixamoAvatar = ({ frame }: Avatar3DProps) => {
   });
   const [isReady, setIsReady] = useState(false);
   
-  const modelPath = `${import.meta.env.BASE_URL}models/Female_05.glb`;
+  const modelPath = `${import.meta.env.BASE_URL}models/mixamo-avatar.glb`;
   const { scene } = useGLTF(modelPath);
   
   // Calculate scale to fit avatar
@@ -716,6 +716,6 @@ const Avatar3D = ({ frame }: Avatar3DProps) => {
   return <MixamoAvatar frame={frame} />;
 };
 
-useGLTF.preload(`${import.meta.env.BASE_URL}models/Female_05.glb`);
+useGLTF.preload(`${import.meta.env.BASE_URL}models/mixamo-avatar.glb`);
 
 export default Avatar3D;
