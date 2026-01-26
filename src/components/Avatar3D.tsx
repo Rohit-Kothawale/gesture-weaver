@@ -96,152 +96,81 @@ const RELAXED_FINGER_CURL = {
 };
 
 // ============================================================
-// ROTATION-BASED ARM MAPPING UTILITIES
-// Uses SAME coordinate system as Hand3D (normalizeCoordinates)
+// SIMPLIFIED ARM MAPPING - MATCHING Hand3D EXACTLY
+// Uses the same coordinate transform as normalizeCoordinates
 // ============================================================
 
-// Scale factor to match Hand3D visualization
-const COORD_SCALE = 3;
-
 // Convert MediaPipe landmark to Three.js vector
-// MATCHING Hand3D's normalizeCoordinates exactly:
-// X: (x - 0.5) * scale (already mirrored in CameraCapture)
-// Y: (1 - y - 0.5) * scale (flip so Up is Up)
-// Z: -z * scale (depth)
-const landmarkToVector = (landmark: [number, number, number]): THREE.Vector3 => {
+// EXACT SAME as Hand3D's normalizeCoordinates in hand-data.ts
+const landmarkToVector = (landmark: [number, number, number], scale = 3): THREE.Vector3 => {
   return new THREE.Vector3(
-    (landmark[0] - 0.5) * COORD_SCALE,      // Same as Hand3D
-    (1 - landmark[1] - 0.5) * COORD_SCALE,  // Flip Y - same as Hand3D
-    -landmark[2] * COORD_SCALE              // Depth - same as Hand3D
+    (landmark[0] - 0.5) * scale,      // X: center around 0
+    (1 - landmark[1] - 0.5) * scale,  // Y: flip so up is up
+    -landmark[2] * scale              // Z: negate for Three.js depth
   );
 };
 
-// Calculate rotation to point bone from start toward end
-const calculateBoneRotation = (
+// Calculate quaternion to rotate from one direction to another
+const getRotationBetweenVectors = (from: THREE.Vector3, to: THREE.Vector3): THREE.Quaternion => {
+  const quat = new THREE.Quaternion();
+  quat.setFromUnitVectors(from.clone().normalize(), to.clone().normalize());
+  return quat;
+};
+
+// Get direction vector between two landmarks
+const getDirection = (
   startLandmark: [number, number, number],
-  endLandmark: [number, number, number],
-  isLeftSide: boolean
-): THREE.Euler => {
+  endLandmark: [number, number, number]
+): THREE.Vector3 => {
   const start = landmarkToVector(startLandmark);
   const end = landmarkToVector(endLandmark);
-  
-  // Direction vector from start to end
-  const direction = new THREE.Vector3().subVectors(end, start).normalize();
-  
-  // Mixamo bones point along positive Y in rest pose
-  // When arm hangs down, bone points down (-Y)
-  const defaultDir = new THREE.Vector3(0, -1, 0);
-  
-  // Calculate quaternion to rotate from default to target direction
-  const quaternion = new THREE.Quaternion().setFromUnitVectors(defaultDir, direction);
-  const euler = new THREE.Euler().setFromQuaternion(quaternion, 'XYZ');
-  
-  return euler;
+  return new THREE.Vector3().subVectors(end, start).normalize();
 };
 
-// Calculate palm normal vector from landmarks 0 (wrist), 5 (index MCP), 17 (pinky MCP)
-const calculatePalmNormal = (
-  wrist: [number, number, number],
-  indexMCP: [number, number, number],
-  pinkyMCP: [number, number, number]
-): THREE.Vector3 => {
-  const w = landmarkToVector(wrist);
-  const i = landmarkToVector(indexMCP);
-  const p = landmarkToVector(pinkyMCP);
-  
-  // Vector from wrist to index
-  const wristToIndex = new THREE.Vector3().subVectors(i, w);
-  // Vector from wrist to pinky
-  const wristToPinky = new THREE.Vector3().subVectors(p, w);
-  
-  // Cross product gives palm normal
-  const normal = new THREE.Vector3().crossVectors(wristToPinky, wristToIndex).normalize();
-  
-  return normal;
+// Mixamo rest pose: arms are in T-pose pointing outward
+// Left arm points in +X, Right arm points in -X
+const MIXAMO_REST_DIRECTIONS = {
+  leftUpperArm: new THREE.Vector3(1, 0, 0),   // Points right (+X) in T-pose
+  leftForeArm: new THREE.Vector3(1, 0, 0),    // Points right (+X) in T-pose
+  rightUpperArm: new THREE.Vector3(-1, 0, 0), // Points left (-X) in T-pose
+  rightForeArm: new THREE.Vector3(-1, 0, 0),  // Points left (-X) in T-pose
 };
 
-// Calculate hand rotation from palm orientation
-const calculateHandRotation = (
-  landmarks: [number, number, number][],
-  isLeftHand: boolean
-): THREE.Euler => {
-  const wrist = landmarks[0];
-  const indexMCP = landmarks[5];
-  const middleMCP = landmarks[9];
-  const pinkyMCP = landmarks[17];
-  
-  // Palm normal (perpendicular to palm surface)
-  const palmNormal = calculatePalmNormal(wrist, indexMCP, pinkyMCP);
-  
-  // Palm forward direction (wrist to middle finger base)
-  const w = landmarkToVector(wrist);
-  const m = landmarkToVector(middleMCP);
-  const palmForward = new THREE.Vector3().subVectors(m, w).normalize();
-  
-  // Palm right direction (cross of forward and normal)
-  const palmRight = new THREE.Vector3().crossVectors(palmForward, palmNormal).normalize();
-  
-  // Build rotation matrix from palm basis vectors
-  const rotMatrix = new THREE.Matrix4();
-  rotMatrix.makeBasis(palmRight, palmForward, palmNormal);
-  
-  // Extract euler angles
-  const euler = new THREE.Euler().setFromRotationMatrix(rotMatrix, 'XYZ');
-  
-  // Offset so palm faces camera by default
-  euler.x += Math.PI * 0.5;
-  
-  return euler;
-};
-
-// Apply elbow constraint (prevent unnatural bending)
-const applyElbowConstraint = (
-  rotation: THREE.Euler,
+// Calculate rotation for upper arm bone
+const calculateUpperArmRotation = (
+  shoulderLandmark: [number, number, number],
+  elbowLandmark: [number, number, number],
   isLeftSide: boolean
-): THREE.Euler => {
-  const constrained = rotation.clone();
+): THREE.Quaternion => {
+  // Direction from shoulder to elbow in world space
+  const targetDir = getDirection(shoulderLandmark, elbowLandmark);
   
-  // Limit elbow to only bend forward (flexion) and slightly inward
-  // Elbow should not bend backward or twist excessively
+  // Rest pose direction for this arm
+  const restDir = isLeftSide 
+    ? MIXAMO_REST_DIRECTIONS.leftUpperArm.clone()
+    : MIXAMO_REST_DIRECTIONS.rightUpperArm.clone();
   
-  // X rotation (flexion/extension): limit to 0 to -2.5 radians
-  constrained.x = THREE.MathUtils.clamp(constrained.x, -2.5, 0.1);
-  
-  // Y rotation (internal/external rotation): limit range
-  constrained.y = THREE.MathUtils.clamp(constrained.y, -0.5, 0.5);
-  
-  // Z rotation (carrying angle): limit to prevent arm clipping body
-  if (isLeftSide) {
-    constrained.z = THREE.MathUtils.clamp(constrained.z, -0.3, 1.0);
-  } else {
-    constrained.z = THREE.MathUtils.clamp(constrained.z, -1.0, 0.3);
-  }
-  
-  return constrained;
+  return getRotationBetweenVectors(restDir, targetDir);
 };
 
-// Apply shoulder constraint (prevent unnatural arm positions)
-const applyShoulderConstraint = (
-  rotation: THREE.Euler,
+// Calculate rotation for forearm bone (relative to upper arm)
+const calculateForeArmRotation = (
+  elbowLandmark: [number, number, number],
+  wristLandmark: [number, number, number],
+  shoulderLandmark: [number, number, number],
   isLeftSide: boolean
-): THREE.Euler => {
-  const constrained = rotation.clone();
+): THREE.Quaternion => {
+  // Direction from elbow to wrist in world space
+  const forearmDir = getDirection(elbowLandmark, wristLandmark);
   
-  // Limit shoulder movement to realistic range
-  // X rotation (forward/backward): -1.5 to 2.5 rad
-  constrained.x = THREE.MathUtils.clamp(constrained.x, -1.5, 2.5);
+  // Direction from shoulder to elbow (upper arm direction)
+  const upperArmDir = getDirection(shoulderLandmark, elbowLandmark);
   
-  // Y rotation (internal/external): -1.0 to 1.0 rad
-  constrained.y = THREE.MathUtils.clamp(constrained.y, -1.0, 1.0);
+  // Forearm rest direction is same as upper arm in T-pose
+  // But we need rotation relative to parent (upper arm)
+  // So we calculate how much the forearm deviates from the upper arm line
   
-  // Z rotation (abduction/adduction): prevent arm from clipping through body
-  if (isLeftSide) {
-    constrained.z = THREE.MathUtils.clamp(constrained.z, -0.5, 2.5);
-  } else {
-    constrained.z = THREE.MathUtils.clamp(constrained.z, -2.5, 0.5);
-  }
-  
-  return constrained;
+  return getRotationBetweenVectors(upperArmDir, forearmDir);
 };
 
 // ============================================================
@@ -428,10 +357,10 @@ const resetFingerBones = (fingerBones: HandBones, lerp: number) => {
 };
 
 // ============================================================
-// ROTATION-BASED ARM MAPPING (No stretching)
+// SIMPLIFIED ARM MAPPING - Direct Quaternion Application
 // ============================================================
 
-const applyRotationBasedArmMapping = (
+const applyArmMapping = (
   armBone: THREE.Bone | undefined,
   foreArmBone: THREE.Bone | undefined,
   handBone: THREE.Bone | undefined,
@@ -443,53 +372,76 @@ const applyRotationBasedArmMapping = (
 ) => {
   if (!handLandmarks || handLandmarks.length < 21) return;
   
-  // Use arm landmarks if available, otherwise estimate from hand
   if (armLandmarks && armBone && foreArmBone) {
     // ============================================
-    // STEP 1: Rotate UpperArm to point toward Elbow
+    // UPPER ARM: Rotate to point toward elbow
     // ============================================
-    const shoulderToElbow = calculateBoneRotation(
+    const upperArmQuat = calculateUpperArmRotation(
       armLandmarks.shoulder,
       armLandmarks.elbow,
       isLeftSide
     );
     
-    // Apply constraint and lerp
-    const constrainedUpperArm = applyShoulderConstraint(shoulderToElbow, isLeftSide);
-    armBone.rotation.x = THREE.MathUtils.lerp(armBone.rotation.x, constrainedUpperArm.x, lerp);
-    armBone.rotation.y = THREE.MathUtils.lerp(armBone.rotation.y, constrainedUpperArm.y, lerp);
-    armBone.rotation.z = THREE.MathUtils.lerp(armBone.rotation.z, constrainedUpperArm.z, lerp);
+    // Convert quaternion to euler and lerp
+    const targetUpperArmEuler = new THREE.Euler().setFromQuaternion(upperArmQuat, 'XYZ');
+    armBone.rotation.x = THREE.MathUtils.lerp(armBone.rotation.x, targetUpperArmEuler.x, lerp);
+    armBone.rotation.y = THREE.MathUtils.lerp(armBone.rotation.y, targetUpperArmEuler.y, lerp);
+    armBone.rotation.z = THREE.MathUtils.lerp(armBone.rotation.z, targetUpperArmEuler.z, lerp);
     
     // ============================================
-    // STEP 2: Rotate LowerArm (ForeArm) to point toward Wrist
+    // FOREARM: Rotate relative to upper arm direction
     // ============================================
-    const elbowToWrist = calculateBoneRotation(
+    const foreArmQuat = calculateForeArmRotation(
       armLandmarks.elbow,
       armLandmarks.wrist,
+      armLandmarks.shoulder,
       isLeftSide
     );
     
-    // Apply constraint and lerp
-    const constrainedForeArm = applyElbowConstraint(elbowToWrist, isLeftSide);
-    foreArmBone.rotation.x = THREE.MathUtils.lerp(foreArmBone.rotation.x, constrainedForeArm.x, lerp);
-    foreArmBone.rotation.y = THREE.MathUtils.lerp(foreArmBone.rotation.y, constrainedForeArm.y, lerp);
-    foreArmBone.rotation.z = THREE.MathUtils.lerp(foreArmBone.rotation.z, constrainedForeArm.z, lerp);
+    const targetForeArmEuler = new THREE.Euler().setFromQuaternion(foreArmQuat, 'XYZ');
+    foreArmBone.rotation.x = THREE.MathUtils.lerp(foreArmBone.rotation.x, targetForeArmEuler.x, lerp);
+    foreArmBone.rotation.y = THREE.MathUtils.lerp(foreArmBone.rotation.y, targetForeArmEuler.y, lerp);
+    foreArmBone.rotation.z = THREE.MathUtils.lerp(foreArmBone.rotation.z, targetForeArmEuler.z, lerp);
   }
   
   // ============================================
-  // STEP 3: Palm Alignment (hand rotation from palm normal)
+  // HAND: Align palm orientation using landmarks 0, 5, 17
   // ============================================
   if (handBone) {
-    const handRotation = calculateHandRotation(handLandmarks, isLeftSide);
+    const wrist = landmarkToVector(handLandmarks[0]);
+    const indexMCP = landmarkToVector(handLandmarks[5]);
+    const middleMCP = landmarkToVector(handLandmarks[9]);
+    const pinkyMCP = landmarkToVector(handLandmarks[17]);
     
-    // Apply with lerp for smooth transitions
-    handBone.rotation.x = THREE.MathUtils.lerp(handBone.rotation.x, handRotation.x, lerp);
-    handBone.rotation.y = THREE.MathUtils.lerp(handBone.rotation.y, handRotation.y, lerp);
-    handBone.rotation.z = THREE.MathUtils.lerp(handBone.rotation.z, handRotation.z, lerp);
+    // Palm forward (wrist to middle finger base)
+    const palmForward = new THREE.Vector3().subVectors(middleMCP, wrist).normalize();
+    
+    // Palm side (index to pinky direction)
+    const palmSide = new THREE.Vector3().subVectors(pinkyMCP, indexMCP).normalize();
+    
+    // Palm normal (perpendicular to palm surface)
+    const palmNormal = new THREE.Vector3().crossVectors(palmForward, palmSide).normalize();
+    
+    // Build rotation matrix - palm faces -Z (toward camera), fingers point up
+    const rotMatrix = new THREE.Matrix4();
+    
+    // For the hand bone: X = side, Y = forward (fingers), Z = normal
+    if (isLeftSide) {
+      rotMatrix.makeBasis(palmSide.negate(), palmForward, palmNormal);
+    } else {
+      rotMatrix.makeBasis(palmSide, palmForward, palmNormal.negate());
+    }
+    
+    const handQuat = new THREE.Quaternion().setFromRotationMatrix(rotMatrix);
+    const targetHandEuler = new THREE.Euler().setFromQuaternion(handQuat, 'XYZ');
+    
+    handBone.rotation.x = THREE.MathUtils.lerp(handBone.rotation.x, targetHandEuler.x, lerp);
+    handBone.rotation.y = THREE.MathUtils.lerp(handBone.rotation.y, targetHandEuler.y, lerp);
+    handBone.rotation.z = THREE.MathUtils.lerp(handBone.rotation.z, targetHandEuler.z, lerp);
   }
   
   // ============================================
-  // STEP 4: Apply finger rotations
+  // FINGERS: Apply curl and spread
   // ============================================
   applyFingerRotations(fingerBones, handLandmarks, isLeftSide, lerp);
 };
@@ -628,9 +580,9 @@ const MixamoAvatar = ({ frame }: Avatar3DProps) => {
     const leftHandVisible = frame && isHandVisible(frame.leftHand);
     const rightHandVisible = frame && isHandVisible(frame.rightHand);
     
-    // LEFT ARM - Rotation-based mapping
+    // LEFT ARM - Direct mapping
     if (leftHandVisible && frame) {
-      applyRotationBasedArmMapping(
+      applyArmMapping(
         bones.leftArm,
         bones.leftForeArm,
         bones.leftHand,
@@ -652,9 +604,9 @@ const MixamoAvatar = ({ frame }: Avatar3DProps) => {
       );
     }
     
-    // RIGHT ARM - Rotation-based mapping
+    // RIGHT ARM - Direct mapping
     if (rightHandVisible && frame) {
-      applyRotationBasedArmMapping(
+      applyArmMapping(
         bones.rightArm,
         bones.rightForeArm,
         bones.rightHand,
