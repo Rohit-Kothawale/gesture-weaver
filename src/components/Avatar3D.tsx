@@ -2,7 +2,7 @@ import { useRef, useEffect, useState, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
-import { HandFrame, isHandVisible, normalizeCoordinates } from '@/types/hand-data';
+import { HandFrame, isHandVisible } from '@/types/hand-data';
 
 interface Avatar3DProps {
   frame: HandFrame | null;
@@ -23,6 +23,8 @@ interface HandBones {
 }
 
 interface BoneRefs {
+  hips?: THREE.Bone;
+  spine?: THREE.Bone;
   leftShoulder?: THREE.Bone;
   leftArm?: THREE.Bone;
   leftForeArm?: THREE.Bone;
@@ -35,14 +37,23 @@ interface BoneRefs {
   rightFingers: HandBones;
 }
 
+// Store initial bone rotations for relaxed pose
+interface InitialPose {
+  leftArm: THREE.Euler;
+  leftForeArm: THREE.Euler;
+  leftHand: THREE.Euler;
+  rightArm: THREE.Euler;
+  rightForeArm: THREE.Euler;
+  rightHand: THREE.Euler;
+}
+
 // Finger landmark indices from MediaPipe
-// Each finger has 4 landmarks: MCP (base), PIP, DIP, TIP
 const FINGER_LANDMARKS = {
-  thumb: [1, 2, 3, 4],     // CMC, MCP, IP, TIP
-  index: [5, 6, 7, 8],     // MCP, PIP, DIP, TIP
-  middle: [9, 10, 11, 12], // MCP, PIP, DIP, TIP
-  ring: [13, 14, 15, 16],  // MCP, PIP, DIP, TIP
-  pinky: [17, 18, 19, 20], // MCP, PIP, DIP, TIP
+  thumb: [1, 2, 3, 4],
+  index: [5, 6, 7, 8],
+  middle: [9, 10, 11, 12],
+  ring: [13, 14, 15, 16],
+  pinky: [17, 18, 19, 20],
 };
 
 // Mixamo finger bone naming convention
@@ -63,8 +74,176 @@ const FINGER_BONE_NAMES = {
   },
 };
 
+// ============================================================
+// RELAXED POSE ROTATIONS (Arms at sides, natural standing pose)
+// ============================================================
+const RELAXED_POSE = {
+  // Left arm hanging naturally at side
+  leftArm: new THREE.Euler(0, 0, Math.PI * 0.05, 'XYZ'), // Slight outward angle
+  leftForeArm: new THREE.Euler(0, 0, 0, 'XYZ'),
+  leftHand: new THREE.Euler(0, 0, 0, 'XYZ'),
+  // Right arm hanging naturally at side  
+  rightArm: new THREE.Euler(0, 0, -Math.PI * 0.05, 'XYZ'), // Slight outward angle
+  rightForeArm: new THREE.Euler(0, 0, 0, 'XYZ'),
+  rightHand: new THREE.Euler(0, 0, 0, 'XYZ'),
+};
+
+// Finger relaxed curl (natural slight bend)
+const RELAXED_FINGER_CURL = {
+  proximal: 0.15,
+  intermediate: 0.1,
+  distal: 0.05,
+};
+
+// ============================================================
+// ROTATION-BASED ARM MAPPING UTILITIES
+// ============================================================
+
+// Convert MediaPipe landmark to Three.js vector (normalized, mirrored for screen)
+const landmarkToVector = (landmark: [number, number, number]): THREE.Vector3 => {
+  // X: mirror for screen (user's right = avatar's right on screen)
+  // Y: flip (MediaPipe 0=top, Three.js positive=up)
+  // Z: negate for Three.js depth
+  return new THREE.Vector3(
+    -(landmark[0] - 0.5),  // Mirror X
+    -(landmark[1] - 0.5),  // Flip Y
+    -landmark[2]           // Negate Z
+  );
+};
+
+// Calculate rotation to point bone from start toward end
+const calculateBoneRotation = (
+  startLandmark: [number, number, number],
+  endLandmark: [number, number, number],
+  isLeftSide: boolean
+): THREE.Euler => {
+  const start = landmarkToVector(startLandmark);
+  const end = landmarkToVector(endLandmark);
+  
+  // Direction vector from start to end
+  const direction = new THREE.Vector3().subVectors(end, start).normalize();
+  
+  // Default bone direction in Mixamo (bones point down Y-axis when in T-pose)
+  // For arms at sides, we need to adjust the reference
+  const defaultDir = new THREE.Vector3(0, -1, 0);
+  
+  // Calculate quaternion to rotate from default to target direction
+  const quaternion = new THREE.Quaternion().setFromUnitVectors(defaultDir, direction);
+  const euler = new THREE.Euler().setFromQuaternion(quaternion, 'XYZ');
+  
+  return euler;
+};
+
+// Calculate palm normal vector from landmarks 0 (wrist), 5 (index MCP), 17 (pinky MCP)
+const calculatePalmNormal = (
+  wrist: [number, number, number],
+  indexMCP: [number, number, number],
+  pinkyMCP: [number, number, number]
+): THREE.Vector3 => {
+  const w = landmarkToVector(wrist);
+  const i = landmarkToVector(indexMCP);
+  const p = landmarkToVector(pinkyMCP);
+  
+  // Vector from wrist to index
+  const wristToIndex = new THREE.Vector3().subVectors(i, w);
+  // Vector from wrist to pinky
+  const wristToPinky = new THREE.Vector3().subVectors(p, w);
+  
+  // Cross product gives palm normal
+  const normal = new THREE.Vector3().crossVectors(wristToPinky, wristToIndex).normalize();
+  
+  return normal;
+};
+
+// Calculate hand rotation from palm orientation
+const calculateHandRotation = (
+  landmarks: [number, number, number][],
+  isLeftHand: boolean
+): THREE.Euler => {
+  const wrist = landmarks[0];
+  const indexMCP = landmarks[5];
+  const middleMCP = landmarks[9];
+  const pinkyMCP = landmarks[17];
+  
+  // Palm normal (perpendicular to palm surface)
+  const palmNormal = calculatePalmNormal(wrist, indexMCP, pinkyMCP);
+  
+  // Palm forward direction (wrist to middle finger base)
+  const w = landmarkToVector(wrist);
+  const m = landmarkToVector(middleMCP);
+  const palmForward = new THREE.Vector3().subVectors(m, w).normalize();
+  
+  // Palm right direction (cross of forward and normal)
+  const palmRight = new THREE.Vector3().crossVectors(palmForward, palmNormal).normalize();
+  
+  // Build rotation matrix from palm basis vectors
+  const rotMatrix = new THREE.Matrix4();
+  rotMatrix.makeBasis(palmRight, palmForward, palmNormal);
+  
+  // Extract euler angles
+  const euler = new THREE.Euler().setFromRotationMatrix(rotMatrix, 'XYZ');
+  
+  // Offset so palm faces camera by default
+  euler.x += Math.PI * 0.5;
+  
+  return euler;
+};
+
+// Apply elbow constraint (prevent unnatural bending)
+const applyElbowConstraint = (
+  rotation: THREE.Euler,
+  isLeftSide: boolean
+): THREE.Euler => {
+  const constrained = rotation.clone();
+  
+  // Limit elbow to only bend forward (flexion) and slightly inward
+  // Elbow should not bend backward or twist excessively
+  
+  // X rotation (flexion/extension): limit to 0 to -2.5 radians
+  constrained.x = THREE.MathUtils.clamp(constrained.x, -2.5, 0.1);
+  
+  // Y rotation (internal/external rotation): limit range
+  constrained.y = THREE.MathUtils.clamp(constrained.y, -0.5, 0.5);
+  
+  // Z rotation (carrying angle): limit to prevent arm clipping body
+  if (isLeftSide) {
+    constrained.z = THREE.MathUtils.clamp(constrained.z, -0.3, 1.0);
+  } else {
+    constrained.z = THREE.MathUtils.clamp(constrained.z, -1.0, 0.3);
+  }
+  
+  return constrained;
+};
+
+// Apply shoulder constraint (prevent unnatural arm positions)
+const applyShoulderConstraint = (
+  rotation: THREE.Euler,
+  isLeftSide: boolean
+): THREE.Euler => {
+  const constrained = rotation.clone();
+  
+  // Limit shoulder movement to realistic range
+  // X rotation (forward/backward): -1.5 to 2.5 rad
+  constrained.x = THREE.MathUtils.clamp(constrained.x, -1.5, 2.5);
+  
+  // Y rotation (internal/external): -1.0 to 1.0 rad
+  constrained.y = THREE.MathUtils.clamp(constrained.y, -1.0, 1.0);
+  
+  // Z rotation (abduction/adduction): prevent arm from clipping through body
+  if (isLeftSide) {
+    constrained.z = THREE.MathUtils.clamp(constrained.z, -0.5, 2.5);
+  } else {
+    constrained.z = THREE.MathUtils.clamp(constrained.z, -2.5, 0.5);
+  }
+  
+  return constrained;
+};
+
+// ============================================================
+// FINGER ROTATION CALCULATIONS
+// ============================================================
+
 // Calculate finger curl angle from landmarks
-// Uses the angle between finger segments to determine bend amount
 const calculateFingerCurl = (
   landmarks: [number, number, number][],
   fingerName: keyof typeof FINGER_LANDMARKS,
@@ -72,34 +251,26 @@ const calculateFingerCurl = (
 ): { proximal: number; intermediate: number; distal: number } => {
   const indices = FINGER_LANDMARKS[fingerName];
   
-  // Get the 4 points of the finger
-  const p0 = new THREE.Vector3(...landmarks[indices[0]]); // Base (MCP)
-  const p1 = new THREE.Vector3(...landmarks[indices[1]]); // First joint (PIP)
-  const p2 = new THREE.Vector3(...landmarks[indices[2]]); // Second joint (DIP)
-  const p3 = new THREE.Vector3(...landmarks[indices[3]]); // Tip
+  const p0 = landmarkToVector(landmarks[indices[0]]);
+  const p1 = landmarkToVector(landmarks[indices[1]]);
+  const p2 = landmarkToVector(landmarks[indices[2]]);
+  const p3 = landmarkToVector(landmarks[indices[3]]);
   
-  // Calculate vectors between consecutive joints
-  const v1 = new THREE.Vector3().subVectors(p1, p0).normalize(); // Base to first joint
-  const v2 = new THREE.Vector3().subVectors(p2, p1).normalize(); // First to second joint
-  const v3 = new THREE.Vector3().subVectors(p3, p2).normalize(); // Second to tip
+  // Vectors between consecutive joints
+  const v1 = new THREE.Vector3().subVectors(p1, p0).normalize();
+  const v2 = new THREE.Vector3().subVectors(p2, p1).normalize();
+  const v3 = new THREE.Vector3().subVectors(p3, p2).normalize();
   
-  // For the proximal bone, we need to compare against a "straight" reference
-  // Use the direction from wrist to finger base as reference for "straight"
-  const wrist = new THREE.Vector3(...landmarks[0]);
-  const middleMCP = new THREE.Vector3(...landmarks[9]); // Middle finger base as palm reference
+  // Reference for straight finger
+  const wrist = landmarkToVector(landmarks[0]);
+  const middleMCP = landmarkToVector(landmarks[9]);
   const palmDirection = new THREE.Vector3().subVectors(middleMCP, wrist).normalize();
   
-  // Calculate bend angles at each joint
-  // Angle between consecutive segments - smaller angle = more bent
-  const angle1 = Math.acos(THREE.MathUtils.clamp(v1.dot(v2), -1, 1)); // Angle at PIP joint
-  const angle2 = Math.acos(THREE.MathUtils.clamp(v2.dot(v3), -1, 1)); // Angle at DIP joint
-  
-  // For proximal, measure how much the first segment deviates from palm direction
+  // Angles at each joint
+  const angle1 = Math.acos(THREE.MathUtils.clamp(v1.dot(v2), -1, 1));
+  const angle2 = Math.acos(THREE.MathUtils.clamp(v2.dot(v3), -1, 1));
   const proximalAngle = Math.acos(THREE.MathUtils.clamp(palmDirection.dot(v1), -1, 1));
   
-  // Convert angles to curl rotations
-  // When finger is straight: angles are ~PI (180°), curl should be ~0
-  // When finger is bent: angles decrease, curl should increase
   const curlScale = isThumb ? 1.0 : 1.2;
   
   return {
@@ -109,90 +280,62 @@ const calculateFingerCurl = (
   };
 };
 
-// Calculate thumb abduction/adduction (movement away from/toward palm)
+// Calculate thumb abduction
 const calculateThumbAbduction = (
   landmarks: [number, number, number][],
   isLeftHand: boolean
 ): number => {
-  // Key landmarks for thumb abduction calculation
-  const wrist = new THREE.Vector3(...landmarks[0]);
-  const thumbCMC = new THREE.Vector3(...landmarks[1]);  // Thumb base
-  const thumbMCP = new THREE.Vector3(...landmarks[2]);  // Thumb knuckle
-  const indexMCP = new THREE.Vector3(...landmarks[5]);  // Index base
-  const pinkyMCP = new THREE.Vector3(...landmarks[17]); // Pinky base
-  const middleMCP = new THREE.Vector3(...landmarks[9]); // Middle base
+  const wrist = landmarkToVector(landmarks[0]);
+  const thumbCMC = landmarkToVector(landmarks[1]);
+  const thumbMCP = landmarkToVector(landmarks[2]);
+  const indexMCP = landmarkToVector(landmarks[5]);
+  const pinkyMCP = landmarkToVector(landmarks[17]);
+  const middleMCP = landmarkToVector(landmarks[9]);
   
-  // Calculate palm plane normal
   const palmForward = new THREE.Vector3().subVectors(middleMCP, wrist).normalize();
   const palmSide = new THREE.Vector3().subVectors(indexMCP, pinkyMCP).normalize();
   const palmNormal = new THREE.Vector3().crossVectors(palmForward, palmSide).normalize();
   
-  // Calculate thumb direction from CMC to MCP
   const thumbDirection = new THREE.Vector3().subVectors(thumbMCP, thumbCMC).normalize();
-  
-  // Calculate the angle between thumb and palm plane
-  // Project thumb direction onto palm plane and measure deviation
-  const thumbOnPalm = thumbDirection.clone().projectOnPlane(palmNormal);
-  
-  // Reference direction: from wrist toward index (along palm)
-  const palmReference = new THREE.Vector3().subVectors(indexMCP, wrist).normalize();
-  
-  // Measure how much thumb deviates from the palm plane (abduction angle)
-  // Dot product with palm normal gives us how much thumb points away from palm
   const abductionAmount = thumbDirection.dot(palmNormal);
   
-  // Also measure spread angle (how far thumb is from index finger direction)
+  const thumbOnPalm = thumbDirection.clone().projectOnPlane(palmNormal);
+  const palmReference = new THREE.Vector3().subVectors(indexMCP, wrist).normalize();
   const spreadAngle = Math.acos(THREE.MathUtils.clamp(thumbOnPalm.dot(palmReference), -1, 1));
   
-  // Combine abduction (out of plane) and spread (within plane)
-  // Positive = thumb away from palm, negative = thumb toward palm
   const abduction = abductionAmount * 1.5 + (spreadAngle - Math.PI * 0.3) * 0.5;
-  
-  // Flip for right hand to maintain correct direction
   return abduction * (isLeftHand ? 1 : -1);
 };
 
-// Calculate finger spread angles (how much each finger deviates from its neighbor)
+// Calculate finger spread
 const calculateFingerSpread = (
   landmarks: [number, number, number][],
   isLeftHand: boolean
 ): { index: number; middle: number; ring: number; pinky: number } => {
-  // MCP (base) landmarks for each finger
-  const indexMCP = new THREE.Vector3(...landmarks[5]);
-  const middleMCP = new THREE.Vector3(...landmarks[9]);
-  const ringMCP = new THREE.Vector3(...landmarks[13]);
-  const pinkyMCP = new THREE.Vector3(...landmarks[17]);
+  const indexMCP = landmarkToVector(landmarks[5]);
+  const middleMCP = landmarkToVector(landmarks[9]);
+  const ringMCP = landmarkToVector(landmarks[13]);
+  const pinkyMCP = landmarkToVector(landmarks[17]);
+  const wrist = landmarkToVector(landmarks[0]);
   
-  // Tip landmarks for direction reference
-  const indexTip = new THREE.Vector3(...landmarks[8]);
-  const middleTip = new THREE.Vector3(...landmarks[12]);
-  const ringTip = new THREE.Vector3(...landmarks[16]);
-  const pinkyTip = new THREE.Vector3(...landmarks[20]);
+  const indexTip = landmarkToVector(landmarks[8]);
+  const middleTip = landmarkToVector(landmarks[12]);
+  const ringTip = landmarkToVector(landmarks[16]);
+  const pinkyTip = landmarkToVector(landmarks[20]);
   
-  // Wrist for reference
-  const wrist = new THREE.Vector3(...landmarks[0]);
-  
-  // Calculate direction vectors for each finger (from MCP toward tip)
   const indexDir = new THREE.Vector3().subVectors(indexTip, indexMCP).normalize();
   const middleDir = new THREE.Vector3().subVectors(middleTip, middleMCP).normalize();
   const ringDir = new THREE.Vector3().subVectors(ringTip, ringMCP).normalize();
   const pinkyDir = new THREE.Vector3().subVectors(pinkyTip, pinkyMCP).normalize();
   
-  // Calculate palm forward direction (reference for neutral spread)
   const palmForward = new THREE.Vector3().subVectors(middleMCP, wrist).normalize();
-  
-  // Calculate spread as angle deviation from middle finger direction
-  // Positive = spread outward, negative = fingers together
-  const indexSpread = Math.acos(THREE.MathUtils.clamp(indexDir.dot(middleDir), -1, 1));
-  const middleSpread = 0; // Middle finger is the reference
-  const ringSpread = Math.acos(THREE.MathUtils.clamp(ringDir.dot(middleDir), -1, 1));
-  const pinkySpread = Math.acos(THREE.MathUtils.clamp(pinkyDir.dot(ringDir), -1, 1));
-  
-  // Determine spread direction by checking cross product with palm normal
   const palmSide = new THREE.Vector3().subVectors(indexMCP, pinkyMCP).normalize();
   const palmNormal = new THREE.Vector3().crossVectors(palmForward, palmSide).normalize();
   
-  // Check which side of middle each finger is on
+  const indexSpread = Math.acos(THREE.MathUtils.clamp(indexDir.dot(middleDir), -1, 1));
+  const ringSpread = Math.acos(THREE.MathUtils.clamp(ringDir.dot(middleDir), -1, 1));
+  const pinkySpread = Math.acos(THREE.MathUtils.clamp(pinkyDir.dot(ringDir), -1, 1));
+  
   const indexCross = new THREE.Vector3().crossVectors(middleDir, indexDir);
   const ringCross = new THREE.Vector3().crossVectors(middleDir, ringDir);
   const pinkyCross = new THREE.Vector3().crossVectors(ringDir, pinkyDir);
@@ -201,49 +344,27 @@ const calculateFingerSpread = (
   const ringSign = ringCross.dot(palmNormal) > 0 ? -1 : 1;
   const pinkySign = pinkyCross.dot(palmNormal) > 0 ? -1 : 1;
   
-  // Scale spread values - baseline when fingers together is ~0.1-0.15 rad
   const baselineSpread = 0.12;
   const spreadScale = 2.0;
-  
-  // Flip for hand side
   const sideMultiplier = isLeftHand ? 1 : -1;
   
   return {
     index: (indexSpread - baselineSpread) * spreadScale * indexSign * sideMultiplier,
-    middle: middleSpread,
+    middle: 0,
     ring: (ringSpread - baselineSpread) * spreadScale * ringSign * sideMultiplier,
     pinky: (pinkySpread - baselineSpread * 0.8) * spreadScale * pinkySign * sideMultiplier,
   };
 };
 
-// Normalize landmarks the same way Hand3D does for consistent coordinate system
-const normalizeLandmarksFor3D = (
-  landmarks: [number, number, number][],
-  scale: number = 1
-): [number, number, number][] => {
-  if (!landmarks || landmarks.length === 0) return [];
-  return landmarks.map((point) => [
-    (1 - point[0] - 0.5) * scale, // Mirror X
-    (1 - point[1] - 0.5) * scale, // Flip Y
-    -point[2] * scale,            // Negate Z for depth
-  ]);
-};
-
 // Apply finger rotations to bones
 const applyFingerRotations = (
   fingerBones: HandBones,
-  rawLandmarks: [number, number, number][],
+  landmarks: [number, number, number][],
   isLeftHand: boolean,
   lerp: number
 ) => {
-  // Use normalized landmarks for consistent calculations with Hand3D
-  const landmarks = normalizeLandmarksFor3D(rawLandmarks, 3);
   const fingers = ['thumb', 'index', 'middle', 'ring', 'pinky'] as const;
-  
-  // Calculate thumb abduction separately
   const thumbAbduction = calculateThumbAbduction(landmarks, isLeftHand);
-  
-  // Calculate finger spread
   const fingerSpread = calculateFingerSpread(landmarks, isLeftHand);
   
   for (const fingerName of fingers) {
@@ -251,52 +372,24 @@ const applyFingerRotations = (
     const isThumb = fingerName === 'thumb';
     const curl = calculateFingerCurl(landmarks, fingerName, isThumb);
     
-    // Apply rotation to each bone segment
     if (bones.proximal) {
       if (isThumb) {
-        // Thumb has special handling for abduction/adduction
         const targetX = curl.proximal * 0.4;
         bones.proximal.rotation.x = THREE.MathUtils.lerp(bones.proximal.rotation.x, targetX, lerp);
-        
-        // Z rotation for abduction (thumb moving away from palm)
-        bones.proximal.rotation.z = THREE.MathUtils.lerp(
-          bones.proximal.rotation.z, 
-          thumbAbduction * 0.6, 
-          lerp
-        );
-        
-        // Y rotation for opposition (thumb rotating to face other fingers)
-        const opposition = thumbAbduction * 0.3;
-        bones.proximal.rotation.y = THREE.MathUtils.lerp(
-          bones.proximal.rotation.y, 
-          opposition, 
-          lerp
-        );
+        bones.proximal.rotation.z = THREE.MathUtils.lerp(bones.proximal.rotation.z, thumbAbduction * 0.6, lerp);
+        bones.proximal.rotation.y = THREE.MathUtils.lerp(bones.proximal.rotation.y, thumbAbduction * 0.3, lerp);
       } else {
-        // Regular fingers curl primarily on X axis
         bones.proximal.rotation.x = THREE.MathUtils.lerp(bones.proximal.rotation.x, curl.proximal, lerp);
-        
-        // Apply calculated spread for each finger
         const spreadAmount = fingerSpread[fingerName as keyof typeof fingerSpread] || 0;
-        bones.proximal.rotation.z = THREE.MathUtils.lerp(
-          bones.proximal.rotation.z, 
-          spreadAmount, 
-          lerp
-        );
+        bones.proximal.rotation.z = THREE.MathUtils.lerp(bones.proximal.rotation.z, spreadAmount, lerp);
       }
     }
     
     if (bones.intermediate) {
       const targetX = isThumb ? curl.intermediate * 0.4 : curl.intermediate;
       bones.intermediate.rotation.x = THREE.MathUtils.lerp(bones.intermediate.rotation.x, targetX, lerp);
-      
-      // Thumb intermediate also gets some abduction influence
       if (isThumb) {
-        bones.intermediate.rotation.z = THREE.MathUtils.lerp(
-          bones.intermediate.rotation.z, 
-          thumbAbduction * 0.2, 
-          lerp
-        );
+        bones.intermediate.rotation.z = THREE.MathUtils.lerp(bones.intermediate.rotation.z, thumbAbduction * 0.2, lerp);
       }
     }
     
@@ -310,306 +403,130 @@ const applyFingerRotations = (
 // Reset finger bones to relaxed position
 const resetFingerBones = (fingerBones: HandBones, lerp: number) => {
   const fingers = ['thumb', 'index', 'middle', 'ring', 'pinky'] as const;
-  const relaxedCurl = 0.15; // Slight natural curl when relaxed
   
   for (const fingerName of fingers) {
     const bones = fingerBones[fingerName];
     
     if (bones.proximal) {
-      bones.proximal.rotation.x = THREE.MathUtils.lerp(bones.proximal.rotation.x, relaxedCurl, lerp);
+      bones.proximal.rotation.x = THREE.MathUtils.lerp(bones.proximal.rotation.x, RELAXED_FINGER_CURL.proximal, lerp);
       bones.proximal.rotation.z = THREE.MathUtils.lerp(bones.proximal.rotation.z, 0, lerp);
+      bones.proximal.rotation.y = THREE.MathUtils.lerp(bones.proximal.rotation.y, 0, lerp);
     }
     if (bones.intermediate) {
-      bones.intermediate.rotation.x = THREE.MathUtils.lerp(bones.intermediate.rotation.x, relaxedCurl * 0.5, lerp);
+      bones.intermediate.rotation.x = THREE.MathUtils.lerp(bones.intermediate.rotation.x, RELAXED_FINGER_CURL.intermediate, lerp);
+      bones.intermediate.rotation.z = THREE.MathUtils.lerp(bones.intermediate.rotation.z, 0, lerp);
     }
     if (bones.distal) {
-      bones.distal.rotation.x = THREE.MathUtils.lerp(bones.distal.rotation.x, relaxedCurl * 0.3, lerp);
+      bones.distal.rotation.x = THREE.MathUtils.lerp(bones.distal.rotation.x, RELAXED_FINGER_CURL.distal, lerp);
     }
   }
 };
 
-// Calculate hand center and orientation from landmarks
-const calculateHandPose = (landmarks: [number, number, number][]) => {
-  // Key landmarks
-  const wrist = new THREE.Vector3(landmarks[0][0], landmarks[0][1], landmarks[0][2]);
-  const indexMCP = new THREE.Vector3(landmarks[5][0], landmarks[5][1], landmarks[5][2]);
-  const middleMCP = new THREE.Vector3(landmarks[9][0], landmarks[9][1], landmarks[9][2]);
-  const pinkyMCP = new THREE.Vector3(landmarks[17][0], landmarks[17][1], landmarks[17][2]);
-  const middleTip = new THREE.Vector3(landmarks[12][0], landmarks[12][1], landmarks[12][2]);
-  
-  // Palm center (average of wrist and finger bases)
-  const palmCenter = new THREE.Vector3()
-    .add(wrist)
-    .add(indexMCP)
-    .add(middleMCP)
-    .add(pinkyMCP)
-    .multiplyScalar(0.25);
-  
-  // Hand direction: from wrist toward middle finger
-  const handDirection = new THREE.Vector3().subVectors(middleMCP, wrist).normalize();
-  
-  // Palm width direction: from pinky to index (across the palm)
-  const palmWidth = new THREE.Vector3().subVectors(indexMCP, pinkyMCP).normalize();
-  
-  // Palm normal: perpendicular to palm surface (cross product)
-  const palmNormal = new THREE.Vector3().crossVectors(handDirection, palmWidth).normalize();
-  
-  // Finger extension direction (for hand rotation)
-  const fingerDirection = new THREE.Vector3().subVectors(middleTip, middleMCP).normalize();
-  
-  return {
-    wrist,
-    palmCenter,
-    handDirection,
-    palmNormal,
-    palmWidth,
-    fingerDirection
-  };
-};
-
 // ============================================================
-// DIRECT POSITION MAPPING (MediaPipe landmarks → Bone positions)
+// ROTATION-BASED ARM MAPPING (No stretching)
 // ============================================================
 
-// Viewport configuration for coordinate conversion
-const VIEWPORT_CONFIG = {
-  // Convert MediaPipe 0-1 to Three.js world coordinates
-  xRange: 3.0,  // -1.5 to 1.5 in world units
-  yRange: 3.0,  // -1.5 to 1.5 in world units  
-  zRange: 0.5,  // depth range (smaller for 2D-like stability)
-  // Hand positioning offsets
-  handOffsetY: 0.3, // Offset to position hands at upper body level
-};
-
-// Finger tip landmark indices (MediaPipe)
-const FINGER_TIP_LANDMARKS = {
-  thumb: 4,
-  index: 8,
-  middle: 12,
-  ring: 16,
-  pinky: 20,
-};
-
-// Finger base landmark indices (MCP/CMC joints)
-const FINGER_BASE_LANDMARKS = {
-  thumb: 1,
-  index: 5,
-  middle: 9,
-  ring: 13,
-  pinky: 17,
-};
-
-// Complete finger landmark mapping for hierarchical positioning
-// [MCP/CMC, PIP/MCP, DIP/IP, TIP]
-const FINGER_JOINT_LANDMARKS = {
-  thumb: [1, 2, 3, 4],     // CMC, MCP, IP, TIP
-  index: [5, 6, 7, 8],     // MCP, PIP, DIP, TIP
-  middle: [9, 10, 11, 12], // MCP, PIP, DIP, TIP
-  ring: [13, 14, 15, 16],  // MCP, PIP, DIP, TIP
-  pinky: [17, 18, 19, 20], // MCP, PIP, DIP, TIP
-};
-
-// Convert MediaPipe normalized coordinates (0-1) to Three.js world coordinates
-// Screen mirroring: user's right hand → avatar's right hand (no X flip)
-const mediapipeToWorld = (
-  x: number, 
-  y: number, 
-  z: number,
-  handScale: number = 1.0
-): THREE.Vector3 => {
-  // X: MediaPipe 0-1 → Three.js world coordinates
-  // Screen mirroring: no flip needed
-  const worldX = (x - 0.5) * VIEWPORT_CONFIG.xRange * handScale;
-  
-  // Y: MediaPipe 0 (top) to 1 (bottom) → Three.js positive (up) to negative (down)
-  const worldY = (0.5 - y) * VIEWPORT_CONFIG.yRange * handScale + VIEWPORT_CONFIG.handOffsetY;
-  
-  // Z: MediaPipe z is negative when closer to camera
-  const worldZ = -z * VIEWPORT_CONFIG.zRange * handScale + 0.3;
-  
-  return new THREE.Vector3(worldX, worldY, worldZ);
-};
-
-// Calculate dynamic hand scale based on distance between wrist (0) and middle finger base (9)
-const calculateHandScale = (landmarks: [number, number, number][]): number => {
-  if (!landmarks || landmarks.length < 10) return 1.0;
-  
-  const wrist = landmarks[0];
-  const middleBase = landmarks[9];
-  
-  // Calculate 2D distance (ignore z for more stable scaling)
-  const dx = middleBase[0] - wrist[0];
-  const dy = middleBase[1] - wrist[1];
-  const distance = Math.sqrt(dx * dx + dy * dy);
-  
-  // Normalize: typical palm length is about 0.15-0.25 in MediaPipe normalized coords
-  const baseDistance = 0.18;
-  const scale = distance / baseDistance;
-  
-  // Clamp to prevent extreme scaling
-  return THREE.MathUtils.clamp(scale, 0.5, 2.0);
-};
-
-// Helper: Convert world position to bone's local space (relative to parent)
-const worldToLocalBonePosition = (
-  bone: THREE.Bone,
-  worldPos: THREE.Vector3
-): THREE.Vector3 => {
-  if (!bone.parent) return worldPos.clone();
-  
-  // Update parent's world matrix
-  bone.parent.updateWorldMatrix(true, false);
-  
-  // Get parent's inverse world matrix
-  const parentInverse = new THREE.Matrix4().copy(bone.parent.matrixWorld).invert();
-  
-  // Transform world position to parent's local space
-  return worldPos.clone().applyMatrix4(parentInverse);
-};
-
-// =============================================================
-// HIERARCHICAL POSITION MAPPING
-// Position bones in order: Wrist → Knuckles → Tips
-// =============================================================
-
-const applyDirectPositionMapping = (
+const applyRotationBasedArmMapping = (
+  armBone: THREE.Bone | undefined,
+  foreArmBone: THREE.Bone | undefined,
   handBone: THREE.Bone | undefined,
   fingerBones: HandBones,
-  landmarks: [number, number, number][],
-  handScale: number,
+  handLandmarks: [number, number, number][],
+  armLandmarks: { shoulder: [number, number, number]; elbow: [number, number, number]; wrist: [number, number, number] } | undefined,
+  isLeftSide: boolean,
   lerp: number
 ) => {
-  if (!handBone || !landmarks || landmarks.length < 21) return;
-
-  // ============================================
-  // STEP 1: Position the Wrist (Hand bone) first
-  // ============================================
-  const wristLandmark = landmarks[0];
-  const targetWristWorldPos = mediapipeToWorld(
-    wristLandmark[0], 
-    wristLandmark[1], 
-    wristLandmark[2],
-    handScale
-  );
-
-  // Convert to local space and apply
-  const wristLocalPos = worldToLocalBonePosition(handBone, targetWristWorldPos);
-  handBone.position.lerp(wristLocalPos, lerp);
+  if (!handLandmarks || handLandmarks.length < 21) return;
   
-  // Update hand bone's world matrix after positioning
-  handBone.updateWorldMatrix(true, false);
-
-  // ============================================
-  // STEP 2: Iterate through fingers - position each joint hierarchically
-  // ============================================
-  const fingers = ['thumb', 'index', 'middle', 'ring', 'pinky'] as const;
-  
-  for (const fingerName of fingers) {
-    const jointIndices = FINGER_JOINT_LANDMARKS[fingerName];
-    const bones = fingerBones[fingerName];
+  // Use arm landmarks if available, otherwise estimate from hand
+  if (armLandmarks && armBone && foreArmBone) {
+    // ============================================
+    // STEP 1: Rotate UpperArm to point toward Elbow
+    // ============================================
+    const shoulderToElbow = calculateBoneRotation(
+      armLandmarks.shoulder,
+      armLandmarks.elbow,
+      isLeftSide
+    );
     
-    // Get all joint positions in world space
-    const jointWorldPositions: THREE.Vector3[] = jointIndices.map(idx => {
-      const lm = landmarks[idx];
-      return mediapipeToWorld(lm[0], lm[1], lm[2], handScale);
-    });
-
-    // Position PROXIMAL bone (knuckle) - parent is hand bone
-    if (bones.proximal) {
-      const targetPos = jointWorldPositions[0]; // MCP/CMC position
-      const localPos = worldToLocalBonePosition(bones.proximal, targetPos);
-      bones.proximal.position.lerp(localPos, lerp);
-      
-      // Calculate rotation to point toward next joint
-      const nextPos = jointWorldPositions[1];
-      const direction = new THREE.Vector3().subVectors(nextPos, targetPos).normalize();
-      
-      // Convert direction to rotation
-      const up = new THREE.Vector3(0, 1, 0);
-      const quaternion = new THREE.Quaternion().setFromUnitVectors(up, direction);
-      const euler = new THREE.Euler().setFromQuaternion(quaternion, 'XYZ');
-      
-      // Apply rotation with lerp
-      bones.proximal.rotation.x = THREE.MathUtils.lerp(bones.proximal.rotation.x, euler.x, lerp);
-      bones.proximal.rotation.y = THREE.MathUtils.lerp(bones.proximal.rotation.y, euler.y, lerp);
-      bones.proximal.rotation.z = THREE.MathUtils.lerp(bones.proximal.rotation.z, euler.z, lerp);
-      
-      // Update matrix for child bones
-      bones.proximal.updateWorldMatrix(true, false);
-    }
-
-    // Position INTERMEDIATE bone (middle phalanx) - parent is proximal
-    if (bones.intermediate) {
-      const targetPos = jointWorldPositions[1]; // PIP/MCP position
-      const localPos = worldToLocalBonePosition(bones.intermediate, targetPos);
-      bones.intermediate.position.lerp(localPos, lerp);
-      
-      // Calculate rotation to point toward next joint
-      const nextPos = jointWorldPositions[2];
-      const direction = new THREE.Vector3().subVectors(nextPos, targetPos).normalize();
-      
-      const up = new THREE.Vector3(0, 1, 0);
-      const quaternion = new THREE.Quaternion().setFromUnitVectors(up, direction);
-      const euler = new THREE.Euler().setFromQuaternion(quaternion, 'XYZ');
-      
-      bones.intermediate.rotation.x = THREE.MathUtils.lerp(bones.intermediate.rotation.x, euler.x, lerp);
-      bones.intermediate.rotation.y = THREE.MathUtils.lerp(bones.intermediate.rotation.y, euler.y, lerp);
-      bones.intermediate.rotation.z = THREE.MathUtils.lerp(bones.intermediate.rotation.z, euler.z, lerp);
-      
-      bones.intermediate.updateWorldMatrix(true, false);
-    }
-
-    // Position DISTAL bone (fingertip) - parent is intermediate
-    if (bones.distal) {
-      const targetPos = jointWorldPositions[2]; // DIP/IP position
-      const localPos = worldToLocalBonePosition(bones.distal, targetPos);
-      bones.distal.position.lerp(localPos, lerp);
-      
-      // Calculate rotation to point toward tip
-      const tipPos = jointWorldPositions[3];
-      const direction = new THREE.Vector3().subVectors(tipPos, targetPos).normalize();
-      
-      const up = new THREE.Vector3(0, 1, 0);
-      const quaternion = new THREE.Quaternion().setFromUnitVectors(up, direction);
-      const euler = new THREE.Euler().setFromQuaternion(quaternion, 'XYZ');
-      
-      bones.distal.rotation.x = THREE.MathUtils.lerp(bones.distal.rotation.x, euler.x, lerp);
-      bones.distal.rotation.y = THREE.MathUtils.lerp(bones.distal.rotation.y, euler.y, lerp);
-      bones.distal.rotation.z = THREE.MathUtils.lerp(bones.distal.rotation.z, euler.z, lerp);
-    }
+    // Apply constraint and lerp
+    const constrainedUpperArm = applyShoulderConstraint(shoulderToElbow, isLeftSide);
+    armBone.rotation.x = THREE.MathUtils.lerp(armBone.rotation.x, constrainedUpperArm.x, lerp);
+    armBone.rotation.y = THREE.MathUtils.lerp(armBone.rotation.y, constrainedUpperArm.y, lerp);
+    armBone.rotation.z = THREE.MathUtils.lerp(armBone.rotation.z, constrainedUpperArm.z, lerp);
+    
+    // ============================================
+    // STEP 2: Rotate LowerArm (ForeArm) to point toward Wrist
+    // ============================================
+    const elbowToWrist = calculateBoneRotation(
+      armLandmarks.elbow,
+      armLandmarks.wrist,
+      isLeftSide
+    );
+    
+    // Apply constraint and lerp
+    const constrainedForeArm = applyElbowConstraint(elbowToWrist, isLeftSide);
+    foreArmBone.rotation.x = THREE.MathUtils.lerp(foreArmBone.rotation.x, constrainedForeArm.x, lerp);
+    foreArmBone.rotation.y = THREE.MathUtils.lerp(foreArmBone.rotation.y, constrainedForeArm.y, lerp);
+    foreArmBone.rotation.z = THREE.MathUtils.lerp(foreArmBone.rotation.z, constrainedForeArm.z, lerp);
   }
-
+  
   // ============================================
-  // STEP 3: Apply overall hand/palm rotation
+  // STEP 3: Palm Alignment (hand rotation from palm normal)
   // ============================================
-  const indexMCP = new THREE.Vector3(...landmarks[5]);
-  const pinkyMCP = new THREE.Vector3(...landmarks[17]);
-  const middleMCP = new THREE.Vector3(...landmarks[9]);
-  const wrist = new THREE.Vector3(...landmarks[0]);
-
-  // Palm vectors in MediaPipe space (with Y flipped)
-  const palmForward = new THREE.Vector3(
-    middleMCP.x - wrist.x,
-    -(middleMCP.y - wrist.y),
-    middleMCP.z - wrist.z
-  ).normalize();
-
-  const palmSide = new THREE.Vector3(
-    indexMCP.x - pinkyMCP.x,
-    -(indexMCP.y - pinkyMCP.y),
-    indexMCP.z - pinkyMCP.z
-  ).normalize();
-
-  // Calculate rotation from palm orientation
-  const palmPitch = Math.atan2(palmForward.y, Math.sqrt(palmForward.x ** 2 + palmForward.z ** 2));
-  const palmRoll = Math.atan2(palmSide.y, palmSide.x);
-
-  // Apply hand rotation with lerping
-  handBone.rotation.x = THREE.MathUtils.lerp(handBone.rotation.x, palmPitch * 0.5, lerp);
-  handBone.rotation.z = THREE.MathUtils.lerp(handBone.rotation.z, palmRoll * 0.3, lerp);
+  if (handBone) {
+    const handRotation = calculateHandRotation(handLandmarks, isLeftSide);
+    
+    // Apply with lerp for smooth transitions
+    handBone.rotation.x = THREE.MathUtils.lerp(handBone.rotation.x, handRotation.x, lerp);
+    handBone.rotation.y = THREE.MathUtils.lerp(handBone.rotation.y, handRotation.y, lerp);
+    handBone.rotation.z = THREE.MathUtils.lerp(handBone.rotation.z, handRotation.z, lerp);
+  }
+  
+  // ============================================
+  // STEP 4: Apply finger rotations
+  // ============================================
+  applyFingerRotations(fingerBones, handLandmarks, isLeftSide, lerp);
 };
 
-// Mixamo Avatar Component
+// Reset arm to relaxed pose
+const resetArmToRelaxedPose = (
+  armBone: THREE.Bone | undefined,
+  foreArmBone: THREE.Bone | undefined,
+  handBone: THREE.Bone | undefined,
+  fingerBones: HandBones,
+  isLeftSide: boolean,
+  lerp: number
+) => {
+  const relaxed = isLeftSide ? 
+    { arm: RELAXED_POSE.leftArm, foreArm: RELAXED_POSE.leftForeArm, hand: RELAXED_POSE.leftHand } :
+    { arm: RELAXED_POSE.rightArm, foreArm: RELAXED_POSE.rightForeArm, hand: RELAXED_POSE.rightHand };
+  
+  if (armBone) {
+    armBone.rotation.x = THREE.MathUtils.lerp(armBone.rotation.x, relaxed.arm.x, lerp);
+    armBone.rotation.y = THREE.MathUtils.lerp(armBone.rotation.y, relaxed.arm.y, lerp);
+    armBone.rotation.z = THREE.MathUtils.lerp(armBone.rotation.z, relaxed.arm.z, lerp);
+  }
+  
+  if (foreArmBone) {
+    foreArmBone.rotation.x = THREE.MathUtils.lerp(foreArmBone.rotation.x, relaxed.foreArm.x, lerp);
+    foreArmBone.rotation.y = THREE.MathUtils.lerp(foreArmBone.rotation.y, relaxed.foreArm.y, lerp);
+    foreArmBone.rotation.z = THREE.MathUtils.lerp(foreArmBone.rotation.z, relaxed.foreArm.z, lerp);
+  }
+  
+  if (handBone) {
+    handBone.rotation.x = THREE.MathUtils.lerp(handBone.rotation.x, relaxed.hand.x, lerp);
+    handBone.rotation.y = THREE.MathUtils.lerp(handBone.rotation.y, relaxed.hand.y, lerp);
+    handBone.rotation.z = THREE.MathUtils.lerp(handBone.rotation.z, relaxed.hand.z, lerp);
+  }
+  
+  resetFingerBones(fingerBones, lerp);
+};
+
+// ============================================================
+// MIXAMO AVATAR COMPONENT
+// ============================================================
+
 const MixamoAvatar = ({ frame }: Avatar3DProps) => {
   const groupRef = useRef<THREE.Group>(null);
   const bonesRef = useRef<BoneRefs>({
@@ -617,6 +534,7 @@ const MixamoAvatar = ({ frame }: Avatar3DProps) => {
     rightFingers: { thumb: {}, index: {}, middle: {}, ring: {}, pinky: {} },
   });
   const [isReady, setIsReady] = useState(false);
+  const initialPoseApplied = useRef(false);
   
   const modelPath = `${import.meta.env.BASE_URL}models/mixamo-avatar.glb`;
   const { scene } = useGLTF(modelPath);
@@ -637,7 +555,6 @@ const MixamoAvatar = ({ frame }: Avatar3DProps) => {
   useEffect(() => {
     const fingerBoneMap: Record<string, { hand: 'left' | 'right'; finger: keyof HandBones; segment: keyof FingerBones }> = {};
     
-    // Build mapping for finger bones
     for (const [side, fingers] of Object.entries(FINGER_BONE_NAMES)) {
       for (const [fingerName, boneNames] of Object.entries(fingers)) {
         const segments: (keyof FingerBones)[] = ['proximal', 'intermediate', 'distal'];
@@ -654,6 +571,10 @@ const MixamoAvatar = ({ frame }: Avatar3DProps) => {
     scene.traverse((child) => {
       if ((child as THREE.Bone).isBone) {
         const bone = child as THREE.Bone;
+        
+        // Core bones
+        if (bone.name === 'Hips') bonesRef.current.hips = bone;
+        if (bone.name === 'Spine') bonesRef.current.spine = bone;
         
         // Arm bones
         if (bone.name === 'LeftShoulder') bonesRef.current.leftShoulder = bone;
@@ -674,7 +595,6 @@ const MixamoAvatar = ({ frame }: Avatar3DProps) => {
       }
     });
     
-    // Count found bones
     const armBoneCount = [
       bonesRef.current.leftArm,
       bonesRef.current.leftForeArm,
@@ -692,60 +612,63 @@ const MixamoAvatar = ({ frame }: Avatar3DProps) => {
     setIsReady(armBoneCount > 0);
   }, [scene]);
   
-  // Animation loop - DIRECT POSITION MAPPING
-  useFrame((state) => {
-    // Disable idle sway for stable 2D-like view
-    // if (groupRef.current) {
-    //   groupRef.current.rotation.y = Math.sin(state.clock.elapsedTime * 0.3) * 0.02;
-    // }
-    
+  // Animation loop - ROTATION-BASED MAPPING (No stretching)
+  useFrame(() => {
     if (!isReady) return;
     
     const bones = bonesRef.current;
-    const lerp = 0.3; // Faster interpolation for responsive direct mapping
+    const lerp = 0.15; // Smooth interpolation
     
-    // LEFT HAND - Direct position mapping
-    if (frame && isHandVisible(frame.leftHand)) {
-      // Calculate dynamic hand scale from wrist-to-middle-base distance
-      const handScale = calculateHandScale(frame.leftHand);
-      
-      // Apply direct position mapping (landmark 0 → hand bone position)
-      applyDirectPositionMapping(
+    // Check if hands are visible with sufficient confidence
+    const leftHandVisible = frame && isHandVisible(frame.leftHand);
+    const rightHandVisible = frame && isHandVisible(frame.rightHand);
+    
+    // LEFT ARM - Rotation-based mapping
+    if (leftHandVisible && frame) {
+      applyRotationBasedArmMapping(
+        bones.leftArm,
+        bones.leftForeArm,
         bones.leftHand,
         bones.leftFingers,
         frame.leftHand,
-        handScale,
+        frame.leftArm,
+        true, // isLeftSide
         lerp
       );
     } else {
-      // Reset hand position and fingers when not visible
-      if (bones.leftHand) {
-        bones.leftHand.rotation.x = THREE.MathUtils.lerp(bones.leftHand.rotation.x, 0, lerp);
-        bones.leftHand.rotation.z = THREE.MathUtils.lerp(bones.leftHand.rotation.z, 0, lerp);
-      }
-      resetFingerBones(bones.leftFingers, lerp);
+      // Return to relaxed pose
+      resetArmToRelaxedPose(
+        bones.leftArm,
+        bones.leftForeArm,
+        bones.leftHand,
+        bones.leftFingers,
+        true,
+        lerp * 0.5 // Slower return to relaxed
+      );
     }
     
-    // RIGHT HAND - Direct position mapping  
-    if (frame && isHandVisible(frame.rightHand)) {
-      // Calculate dynamic hand scale from wrist-to-middle-base distance
-      const handScale = calculateHandScale(frame.rightHand);
-      
-      // Apply direct position mapping (landmark 0 → hand bone position)
-      applyDirectPositionMapping(
+    // RIGHT ARM - Rotation-based mapping
+    if (rightHandVisible && frame) {
+      applyRotationBasedArmMapping(
+        bones.rightArm,
+        bones.rightForeArm,
         bones.rightHand,
         bones.rightFingers,
         frame.rightHand,
-        handScale,
+        frame.rightArm,
+        false, // isLeftSide
         lerp
       );
     } else {
-      // Reset hand position and fingers when not visible
-      if (bones.rightHand) {
-        bones.rightHand.rotation.x = THREE.MathUtils.lerp(bones.rightHand.rotation.x, 0, lerp);
-        bones.rightHand.rotation.z = THREE.MathUtils.lerp(bones.rightHand.rotation.z, 0, lerp);
-      }
-      resetFingerBones(bones.rightFingers, lerp);
+      // Return to relaxed pose
+      resetArmToRelaxedPose(
+        bones.rightArm,
+        bones.rightForeArm,
+        bones.rightHand,
+        bones.rightFingers,
+        false,
+        lerp * 0.5
+      );
     }
   });
   
