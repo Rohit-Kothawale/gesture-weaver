@@ -100,11 +100,12 @@ const RELAXED_FINGER_CURL = {
 // Uses the same coordinate transform as normalizeCoordinates
 // ============================================================
 
-// Convert MediaPipe landmark to Three.js vector
-// EXACT SAME as Hand3D's normalizeCoordinates in hand-data.ts
+// Convert MediaPipe landmark to Three.js vector for AVATAR
+// Avatar faces the camera, so X is NEGATED compared to Hand3D
+// This makes user's left = avatar's left (not mirrored)
 const landmarkToVector = (landmark: [number, number, number], scale = 3): THREE.Vector3 => {
   return new THREE.Vector3(
-    (landmark[0] - 0.5) * scale,      // X: center around 0
+    -(landmark[0] - 0.5) * scale,     // X: NEGATE for avatar facing camera
     (1 - landmark[1] - 0.5) * scale,  // Y: flip so up is up
     -landmark[2] * scale              // Z: negate for Three.js depth
   );
