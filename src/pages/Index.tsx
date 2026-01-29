@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Hand, User, Layers, Camera, Download, Bone, Wand2 } from 'lucide-react';
+import { Hand, User, Layers, Camera, Download, Bone, Wand2, Maximize2 } from 'lucide-react';
 import HandVisualization from '@/components/HandVisualization';
 import AvatarVisualization from '@/components/AvatarVisualization';
+import AvatarModal from '@/components/AvatarModal';
 import FileUpload from '@/components/FileUpload';
 import VideoUpload from '@/components/VideoUpload';
 import VideoPlayer from '@/components/VideoPlayer';
@@ -17,6 +18,7 @@ const Index = () => {
   const [viewMode, setViewMode] = useState<'hands' | 'avatar'>('avatar');
   const [showCamera, setShowCamera] = useState(false);
   const [showArms, setShowArms] = useState(true);
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
   const [videoFile, setVideoFile] = useState<{ file: File; url: string } | null>(null);
   const [showVideoProcessor, setShowVideoProcessor] = useState(false);
   const {
@@ -154,6 +156,19 @@ const Index = () => {
             </button>
           </div>
           
+          {/* Fullscreen Avatar Button */}
+          {viewMode === 'avatar' && (
+            <Button
+              onClick={() => setShowAvatarModal(true)}
+              variant="outline"
+              size="sm"
+              className="flex items-center gap-1.5 sm:gap-2"
+            >
+              <Maximize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span className="hidden xs:inline">Fullscreen</span>
+            </Button>
+          )}
+          
           {/* Show Arms Toggle - only visible when in Hands Only view */}
           {viewMode === 'hands' && (
             <div className="glass-panel px-2 sm:px-3 py-1.5 sm:py-2 flex items-center gap-1.5 sm:gap-2">
@@ -197,6 +212,14 @@ const Index = () => {
             </div>
           </div>
         )}
+
+        {/* Avatar Modal - Fullscreen view with current frame data */}
+        <AvatarModal
+          isOpen={showAvatarModal}
+          onClose={() => setShowAvatarModal(false)}
+          frame={currentFrameData}
+          animationSpeed={0.2}
+        />
 
         {/* Main Content */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
