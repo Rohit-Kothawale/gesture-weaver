@@ -12,11 +12,11 @@ interface AvatarVisualizationProps {
 const Scene = ({ frame }: AvatarVisualizationProps) => {
   return (
     <>
-      {/* Orthographic camera for flat 2D cutout view - no controls */}
+      {/* Orthographic camera for flat 2D cutout view - positioned to see the model */}
       <OrthographicCamera
         makeDefault
-        position={[0, 0.9, 5]}
-        zoom={280}
+        position={[0, 0.9, 15]}
+        zoom={180}
         near={0.1}
         far={100}
       />
