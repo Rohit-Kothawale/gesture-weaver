@@ -1,6 +1,6 @@
 import { Suspense, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Grid, OrthographicCamera, useGLTF } from '@react-three/drei';
+import { OrthographicCamera, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { X } from 'lucide-react';
@@ -548,7 +548,7 @@ interface SceneProps {
 const Scene = ({ frame, animationSpeed }: SceneProps) => {
   return (
     <>
-      {/* Orthographic camera for stable 2D full-body view - no perspective */}
+      {/* Orthographic camera for flat 2D cutout view */}
       <OrthographicCamera
         makeDefault
         position={[0, 0.9, 5]}
@@ -557,28 +557,10 @@ const Scene = ({ frame, animationSpeed }: SceneProps) => {
         far={100}
       />
 
-      {/* Lighting */}
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[5, 5, 5]} intensity={1} color="#ffffff" />
-      <directionalLight position={[-5, 3, -5]} intensity={0.4} color="#ffffff" />
-      <pointLight position={[0, 3, 2]} intensity={0.5} color="#ffffff" />
+      {/* Flat lighting - no shadows or depth cues */}
+      <ambientLight intensity={1.2} />
 
-      {/* Grid at ground level */}
-      <Grid
-        args={[10, 10]}
-        cellSize={0.5}
-        cellThickness={0.5}
-        cellColor="#1a2a3a"
-        sectionSize={2}
-        sectionThickness={1}
-        sectionColor="#2a3a4a"
-        fadeDistance={12}
-        fadeStrength={1}
-        followCamera={false}
-        position={[0, 0, 0]}
-      />
-
-      {/* Avatar */}
+      {/* Avatar only - no grid or 3D scene elements */}
       <Suspense fallback={<AvatarLoader />}>
         <Avatar frame={frame} animationSpeed={animationSpeed} />
       </Suspense>
@@ -641,12 +623,11 @@ const AvatarModal = ({
           </div>
         )}
 
-        {/* 3D Canvas */}
+        {/* Flat 2D Canvas - transparent background */}
         <Canvas
           gl={{ antialias: true, alpha: true }}
           style={{ background: 'transparent' }}
         >
-          <color attach="background" args={['#0a0f14']} />
           <Suspense fallback={<AvatarLoader />}>
             <Scene frame={frame} animationSpeed={animationSpeed} />
           </Suspense>
