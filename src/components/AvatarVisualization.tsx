@@ -11,24 +11,24 @@ interface AvatarVisualizationProps {
 const Scene = ({ frame }: AvatarVisualizationProps) => {
   return (
     <>
-      <PerspectiveCamera makeDefault position={[0, 0.5, 4]} fov={50} />
+      <PerspectiveCamera makeDefault position={[0, 1.2, 2.5]} fov={50} />
       <OrbitControls
         enablePan={true}
         enableZoom={true}
         enableRotate={true}
-        minDistance={2}
-        maxDistance={8}
+        minDistance={0.5}
+        maxDistance={10}
         autoRotate={false}
-        target={[0, 0.3, 0]}
+        target={[0, 1, 0]}
       />
 
       {/* Lighting */}
-      <ambientLight intensity={0.5} />
-      <directionalLight position={[5, 5, 5]} intensity={0.8} color="#ffffff" />
-      <directionalLight position={[-5, 3, -5]} intensity={0.3} color="#00d4ff" />
-      <pointLight position={[0, 3, 2]} intensity={0.4} color="#00ff88" />
+      <ambientLight intensity={0.6} />
+      <directionalLight position={[5, 5, 5]} intensity={1} color="#ffffff" />
+      <directionalLight position={[-5, 3, -5]} intensity={0.4} color="#ffffff" />
+      <pointLight position={[0, 3, 2]} intensity={0.5} color="#ffffff" />
 
-      {/* Grid */}
+      {/* Grid at ground level */}
       <Grid
         args={[10, 10]}
         cellSize={0.5}
@@ -40,7 +40,7 @@ const Scene = ({ frame }: AvatarVisualizationProps) => {
         fadeDistance={12}
         fadeStrength={1}
         followCamera={false}
-        position={[0, -1.5, 0]}
+        position={[0, 0, 0]}
       />
 
       {/* Avatar */}
@@ -62,7 +62,7 @@ const AvatarVisualization = ({ frame }: AvatarVisualizationProps) => {
         }}
       >
         <color attach="background" args={['#0a0f14']} />
-        <fog attach="fog" args={['#0a0f14', 5, 15]} />
+        {/* Removed fog to ensure avatar visibility */}
         <Suspense fallback={null}>
           <Scene frame={frame} />
         </Suspense>
