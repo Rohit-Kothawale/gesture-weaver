@@ -8,62 +8,59 @@ interface SkinnedMeshAvatarProps {
   frame: HandFrame | null;
 }
 
-// Bone name mappings for the Female_05.glb model
-// These may need adjustment based on the actual bone hierarchy
-const BONE_NAMES = {
+// Bone name mappings for the Female_05.glb model (based on actual bone names found)
+const BONE_NAMES: Record<string, string> = {
   // Spine
-  hips: 'mixamorigHips',
-  spine: 'mixamorigSpine',
-  spine1: 'mixamorigSpine1',
-  spine2: 'mixamorigSpine2',
-  neck: 'mixamorigNeck',
-  head: 'mixamorigHead',
+  hips: 'hips',
+  spine: 'spin',
+  neck: 'neck',
+  head: 'head',
 
   // Left arm
-  leftShoulder: 'mixamorigLeftShoulder',
-  leftUpperArm: 'mixamorigLeftArm',
-  leftLowerArm: 'mixamorigLeftForeArm',
-  leftHand: 'mixamorigLeftHand',
+  leftShoulder: 'leftshoulder',
+  leftUpperArm: 'leftupperarm',
+  leftLowerArm: 'leftlowerarm',
+  leftHand: 'lefthand',
 
   // Right arm
-  rightShoulder: 'mixamorigRightShoulder',
-  rightUpperArm: 'mixamorigRightArm',
-  rightLowerArm: 'mixamorigRightForeArm',
-  rightHand: 'mixamorigRightHand',
+  rightShoulder: 'rightshoulder',
+  rightUpperArm: 'rightupperarm',
+  rightLowerArm: 'rightlowerarm',
+  rightHand: 'rightarm',
 
-  // Left fingers
-  leftThumb1: 'mixamorigLeftHandThumb1',
-  leftThumb2: 'mixamorigLeftHandThumb2',
-  leftThumb3: 'mixamorigLeftHandThumb3',
-  leftIndex1: 'mixamorigLeftHandIndex1',
-  leftIndex2: 'mixamorigLeftHandIndex2',
-  leftIndex3: 'mixamorigLeftHandIndex3',
-  leftMiddle1: 'mixamorigLeftHandMiddle1',
-  leftMiddle2: 'mixamorigLeftHandMiddle2',
-  leftMiddle3: 'mixamorigLeftHandMiddle3',
-  leftRing1: 'mixamorigLeftHandRing1',
-  leftRing2: 'mixamorigLeftHandRing2',
-  leftRing3: 'mixamorigLeftHandRing3',
-  leftPinky1: 'mixamorigLeftHandPinky1',
-  leftPinky2: 'mixamorigLeftHandPinky2',
-  leftPinky3: 'mixamorigLeftHandPinky3',
+  // Left fingers (using lowercase names from GLB)
+  leftThumb1: 'leftthumb',
+  leftThumb2: 'leftthumb2',
+  leftThumb3: 'leftthumb1',
+  leftIndex1: 'leftindexfinger',
+  leftIndex2: 'leftindexfinger3',
+  leftIndex3: 'leftindexfinger2',
+  leftMiddle1: 'leftmiddlefinger',
+  leftMiddle2: 'leftmiddlefinger3',
+  leftMiddle3: 'leftmiddlefinger2',
+  leftRing1: 'leftringfinger',
+  leftRing2: 'leftringfinger3',
+  leftRing3: 'leftringfinger2',
+  leftPinky1: 'leftlittlefinger',
+  leftPinky2: 'leftlittlefinger3',
+  leftPinky3: 'leftlittlefinger2',
 
   // Right fingers
-  rightThumb1: 'mixamorigRightHandThumb1',
-  rightThumb2: 'mixamorigRightHandThumb2',
-  rightThumb3: 'mixamorigRightHandThumb3',
-  rightIndex1: 'mixamorigRightHandIndex1',
-  rightIndex2: 'mixamorigRightHandIndex2',
-  rightIndex3: 'mixamorigRightHandIndex3',
-  rightMiddle1: 'mixamorigRightHandMiddle1',
-  rightMiddle2: 'mixamorigRightHandMiddle2',
-  rightMiddle3: 'mixamorigRightHandMiddle3',
-  rightRing1: 'mixamorigRightHandRing1',
-  rightRing2: 'mixamorigRightHandRing2',
-  rightRing3: 'mixamorigRightHandRing3',
-  rightPinky1: 'mixamorigRightHandPinky1',
-  rightPinky2: 'mixamorigRightHandPinky2',
-  rightPinky3: 'mixamorigRightHandPinky3',
+  rightThumb1: 'rightthumb',
+  rightThumb2: 'rightthumb2',
+  rightThumb3: 'rightthumb1',
+  rightIndex1: 'rightindexfinger',
+  rightIndex2: 'rightindexfinger3',
+  rightIndex3: 'rightindexfinger2',
+  rightMiddle1: 'rightmiddlefinger',
+  rightMiddle2: 'rightmiddlefinger3',
+  rightMiddle3: 'rightmiddlefinger2',
+  rightRing1: 'rightringfinger',
+  rightRing2: 'rightringfinger3',
+  rightRing3: 'rightringfinger2',
+  rightPinky1: 'rightlittlefinger',
+  rightPinky2: 'rightlittlefinger3',
+  rightPinky3: 'rightlittlefinger2',
 };
 
 // Finger landmark indices in MediaPipe format
@@ -177,6 +174,21 @@ const SkinnedMeshAvatar = ({ frame }: SkinnedMeshAvatarProps) => {
   const clonedScene = useMemo(() => {
     const clone = scene.clone();
     
+    // Calculate bounding box to determine scale
+    const box = new THREE.Box3().setFromObject(clone);
+    const size = box.getSize(new THREE.Vector3());
+    console.log('Model size:', size);
+    console.log('Model bounding box:', box);
+    
+    // The model might be in centimeters, scale down if needed
+    // Target height is roughly 1.8 units (meters)
+    const targetHeight = 1.8;
+    const currentHeight = size.y;
+    const scaleFactor = currentHeight > 10 ? targetHeight / currentHeight : 1;
+    console.log('Scale factor:', scaleFactor, 'Current height:', currentHeight);
+    
+    clone.scale.setScalar(scaleFactor);
+    
     // Enable shadows and fix materials
     clone.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
@@ -206,32 +218,29 @@ const SkinnedMeshAvatar = ({ frame }: SkinnedMeshAvatarProps) => {
     const bones: { [key: string]: THREE.Bone } = {};
     const restPose: BoneRestPose = {};
     
+    // First, collect all bones by their exact name
+    const allBones: { [name: string]: THREE.Bone } = {};
     clonedScene.traverse((child) => {
       if ((child as THREE.Bone).isBone) {
         const bone = child as THREE.Bone;
-        
-        // Store bone reference by name
-        for (const [key, name] of Object.entries(BONE_NAMES)) {
-          if (bone.name === name || bone.name.toLowerCase().includes(key.toLowerCase())) {
-            bones[key] = bone;
-            // Store rest pose
-            restPose[key] = bone.quaternion.clone();
-            break;
-          }
-        }
-        
-        // Also try to match by direct name
-        if (!bones[bone.name]) {
-          bones[bone.name] = bone;
-          restPose[bone.name] = bone.quaternion.clone();
-        }
+        allBones[bone.name.toLowerCase()] = bone;
       }
     });
+    
+    // Now map our bone keys to actual bones
+    for (const [key, targetName] of Object.entries(BONE_NAMES)) {
+      const bone = allBones[targetName.toLowerCase()];
+      if (bone) {
+        bones[key] = bone;
+        restPose[key] = bone.quaternion.clone();
+      }
+    }
     
     bonesRef.current = bones;
     restPoseRef.current = restPose;
     
-    console.log('Found bones:', Object.keys(bones));
+    console.log('Mapped bones:', Object.keys(bones));
+    console.log('Available bones in model:', Object.keys(allBones));
   }, [clonedScene]);
   
   // Animate bones based on frame data
