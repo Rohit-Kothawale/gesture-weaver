@@ -1,0 +1,434 @@
+import { useRef, useEffect, useMemo } from 'react';
+import { useFrame } from '@react-three/fiber';
+import { useGLTF } from '@react-three/drei';
+import * as THREE from 'three';
+import { HandFrame, isHandVisible } from '@/types/hand-data';
+
+interface SkinnedMeshAvatarProps {
+  frame: HandFrame | null;
+}
+
+// Bone name mappings for the Female_05.glb model
+// These may need adjustment based on the actual bone hierarchy
+const BONE_NAMES = {
+  // Spine
+  hips: 'mixamorigHips',
+  spine: 'mixamorigSpine',
+  spine1: 'mixamorigSpine1',
+  spine2: 'mixamorigSpine2',
+  neck: 'mixamorigNeck',
+  head: 'mixamorigHead',
+
+  // Left arm
+  leftShoulder: 'mixamorigLeftShoulder',
+  leftUpperArm: 'mixamorigLeftArm',
+  leftLowerArm: 'mixamorigLeftForeArm',
+  leftHand: 'mixamorigLeftHand',
+
+  // Right arm
+  rightShoulder: 'mixamorigRightShoulder',
+  rightUpperArm: 'mixamorigRightArm',
+  rightLowerArm: 'mixamorigRightForeArm',
+  rightHand: 'mixamorigRightHand',
+
+  // Left fingers
+  leftThumb1: 'mixamorigLeftHandThumb1',
+  leftThumb2: 'mixamorigLeftHandThumb2',
+  leftThumb3: 'mixamorigLeftHandThumb3',
+  leftIndex1: 'mixamorigLeftHandIndex1',
+  leftIndex2: 'mixamorigLeftHandIndex2',
+  leftIndex3: 'mixamorigLeftHandIndex3',
+  leftMiddle1: 'mixamorigLeftHandMiddle1',
+  leftMiddle2: 'mixamorigLeftHandMiddle2',
+  leftMiddle3: 'mixamorigLeftHandMiddle3',
+  leftRing1: 'mixamorigLeftHandRing1',
+  leftRing2: 'mixamorigLeftHandRing2',
+  leftRing3: 'mixamorigLeftHandRing3',
+  leftPinky1: 'mixamorigLeftHandPinky1',
+  leftPinky2: 'mixamorigLeftHandPinky2',
+  leftPinky3: 'mixamorigLeftHandPinky3',
+
+  // Right fingers
+  rightThumb1: 'mixamorigRightHandThumb1',
+  rightThumb2: 'mixamorigRightHandThumb2',
+  rightThumb3: 'mixamorigRightHandThumb3',
+  rightIndex1: 'mixamorigRightHandIndex1',
+  rightIndex2: 'mixamorigRightHandIndex2',
+  rightIndex3: 'mixamorigRightHandIndex3',
+  rightMiddle1: 'mixamorigRightHandMiddle1',
+  rightMiddle2: 'mixamorigRightHandMiddle2',
+  rightMiddle3: 'mixamorigRightHandMiddle3',
+  rightRing1: 'mixamorigRightHandRing1',
+  rightRing2: 'mixamorigRightHandRing2',
+  rightRing3: 'mixamorigRightHandRing3',
+  rightPinky1: 'mixamorigRightHandPinky1',
+  rightPinky2: 'mixamorigRightHandPinky2',
+  rightPinky3: 'mixamorigRightHandPinky3',
+};
+
+// Finger landmark indices in MediaPipe format
+const FINGER_LANDMARKS = {
+  thumb: [1, 2, 3, 4],
+  index: [5, 6, 7, 8],
+  middle: [9, 10, 11, 12],
+  ring: [13, 14, 15, 16],
+  pinky: [17, 18, 19, 20],
+};
+
+// Smoothing factor for rotations (0 = no smoothing, 1 = no movement)
+const SLERP_FACTOR = 0.15;
+
+// Helper to convert MediaPipe coordinates to Three.js world space
+const landmarkTo3D = (coord: [number, number, number], scale: number = 1): THREE.Vector3 => {
+  return new THREE.Vector3(
+    -(coord[0] - 0.5) * scale, // Negate X for mirror correction
+    (1 - coord[1] - 0.5) * scale, // Flip Y
+    coord[2] * scale // Positive Z towards camera
+  );
+};
+
+// Calculate rotation to point bone from start to end direction
+const calculateLookAtRotation = (
+  startPos: THREE.Vector3,
+  endPos: THREE.Vector3,
+  restDirection: THREE.Vector3,
+  upHint: THREE.Vector3 = new THREE.Vector3(0, 1, 0)
+): THREE.Quaternion => {
+  const targetDirection = new THREE.Vector3().subVectors(endPos, startPos).normalize();
+  
+  if (targetDirection.length() < 0.001) {
+    return new THREE.Quaternion();
+  }
+  
+  const quaternion = new THREE.Quaternion();
+  quaternion.setFromUnitVectors(restDirection, targetDirection);
+  
+  return quaternion;
+};
+
+// Calculate finger curl angle from 3 points
+const calculateFingerCurl = (
+  base: THREE.Vector3,
+  mid: THREE.Vector3,
+  tip: THREE.Vector3
+): number => {
+  const v1 = new THREE.Vector3().subVectors(mid, base).normalize();
+  const v2 = new THREE.Vector3().subVectors(tip, mid).normalize();
+  
+  const dot = v1.dot(v2);
+  const angle = Math.acos(Math.max(-1, Math.min(1, dot)));
+  
+  return angle;
+};
+
+// Get finger bone rotations from landmarks
+const getFingerRotations = (
+  landmarks: [number, number, number][],
+  fingerIndices: number[],
+  isLeft: boolean
+): THREE.Quaternion[] => {
+  if (!landmarks || landmarks.length < 21) {
+    return [new THREE.Quaternion(), new THREE.Quaternion(), new THREE.Quaternion()];
+  }
+  
+  const points = fingerIndices.map(i => landmarkTo3D(landmarks[i], 3));
+  const wrist = landmarkTo3D(landmarks[0], 3);
+  
+  const rotations: THREE.Quaternion[] = [];
+  
+  // Calculate rotation for each joint (MCP, PIP, DIP)
+  for (let i = 0; i < 3; i++) {
+    const prevPoint = i === 0 ? wrist : points[i - 1];
+    const currentPoint = points[i];
+    const nextPoint = points[i + 1];
+    
+    if (prevPoint && currentPoint && nextPoint) {
+      const curl = calculateFingerCurl(prevPoint, currentPoint, nextPoint);
+      
+      // Apply curl as rotation around local X axis (finger flexion)
+      const rotX = curl * 0.8; // Scale factor for natural movement
+      const quaternion = new THREE.Quaternion();
+      quaternion.setFromEuler(new THREE.Euler(rotX, 0, 0));
+      rotations.push(quaternion);
+    } else {
+      rotations.push(new THREE.Quaternion());
+    }
+  }
+  
+  return rotations;
+};
+
+// Store rest pose quaternions
+interface BoneRestPose {
+  [key: string]: THREE.Quaternion;
+}
+
+const SkinnedMeshAvatar = ({ frame }: SkinnedMeshAvatarProps) => {
+  const groupRef = useRef<THREE.Group>(null);
+  const bonesRef = useRef<{ [key: string]: THREE.Bone }>({});
+  const restPoseRef = useRef<BoneRestPose>({});
+  const prevRotationsRef = useRef<{ [key: string]: THREE.Quaternion }>({});
+  
+  // Load the GLB model
+  const modelPath = `${import.meta.env.BASE_URL}models/Female_05.glb`;
+  const { scene } = useGLTF(modelPath);
+  
+  // Clone scene and extract bones
+  const clonedScene = useMemo(() => {
+    const clone = scene.clone();
+    
+    // Enable shadows and fix materials
+    clone.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+        
+        const mesh = child as THREE.SkinnedMesh;
+        if (mesh.material) {
+          const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+          materials.forEach((mat) => {
+            if (mat instanceof THREE.MeshStandardMaterial) {
+              mat.roughness = 0.8;
+              mat.metalness = 0.1;
+            }
+          });
+        }
+      }
+    });
+    
+    return clone;
+  }, [scene]);
+  
+  // Find and store bone references on mount
+  useEffect(() => {
+    if (!clonedScene) return;
+    
+    const bones: { [key: string]: THREE.Bone } = {};
+    const restPose: BoneRestPose = {};
+    
+    clonedScene.traverse((child) => {
+      if ((child as THREE.Bone).isBone) {
+        const bone = child as THREE.Bone;
+        
+        // Store bone reference by name
+        for (const [key, name] of Object.entries(BONE_NAMES)) {
+          if (bone.name === name || bone.name.toLowerCase().includes(key.toLowerCase())) {
+            bones[key] = bone;
+            // Store rest pose
+            restPose[key] = bone.quaternion.clone();
+            break;
+          }
+        }
+        
+        // Also try to match by direct name
+        if (!bones[bone.name]) {
+          bones[bone.name] = bone;
+          restPose[bone.name] = bone.quaternion.clone();
+        }
+      }
+    });
+    
+    bonesRef.current = bones;
+    restPoseRef.current = restPose;
+    
+    console.log('Found bones:', Object.keys(bones));
+  }, [clonedScene]);
+  
+  // Animate bones based on frame data
+  useFrame(() => {
+    const bones = bonesRef.current;
+    const restPose = restPoseRef.current;
+    
+    if (!bones || Object.keys(bones).length === 0) return;
+    
+    // Check hand visibility
+    const leftHandVisible = frame?.leftHand ? isHandVisible(frame.leftHand) : false;
+    const rightHandVisible = frame?.rightHand ? isHandVisible(frame.rightHand) : false;
+    const hasLeftArm = frame?.leftArm && (frame.leftArm.shoulder[0] !== 0 || frame.leftArm.shoulder[1] !== 0);
+    const hasRightArm = frame?.rightArm && (frame.rightArm.shoulder[0] !== 0 || frame.rightArm.shoulder[1] !== 0);
+    
+    // Helper to apply rotation with smoothing
+    const applyRotation = (boneKey: string, targetQuat: THREE.Quaternion) => {
+      const bone = bones[boneKey];
+      if (!bone) return;
+      
+      // Initialize previous rotation if needed
+      if (!prevRotationsRef.current[boneKey]) {
+        prevRotationsRef.current[boneKey] = bone.quaternion.clone();
+      }
+      
+      // Slerp towards target
+      prevRotationsRef.current[boneKey].slerp(targetQuat, SLERP_FACTOR);
+      bone.quaternion.copy(prevRotationsRef.current[boneKey]);
+    };
+    
+    // Reset to rest pose helper
+    const resetToRestPose = (boneKey: string) => {
+      const rest = restPose[boneKey];
+      if (rest) {
+        applyRotation(boneKey, rest);
+      }
+    };
+    
+    // --- LEFT ARM IK ---
+    if (hasLeftArm && frame?.leftArm) {
+      const shoulder = landmarkTo3D(frame.leftArm.shoulder, 1);
+      const elbow = landmarkTo3D(frame.leftArm.elbow, 1);
+      const wrist = landmarkTo3D(frame.leftArm.wrist, 1);
+      
+      // Upper arm: point from shoulder to elbow
+      const upperArmRest = new THREE.Vector3(1, 0, 0); // T-pose points left
+      const upperArmQuat = calculateLookAtRotation(shoulder, elbow, upperArmRest);
+      applyRotation('leftUpperArm', upperArmQuat);
+      
+      // Lower arm: point from elbow to wrist
+      const lowerArmQuat = calculateLookAtRotation(elbow, wrist, upperArmRest);
+      applyRotation('leftLowerArm', lowerArmQuat);
+    } else {
+      resetToRestPose('leftUpperArm');
+      resetToRestPose('leftLowerArm');
+    }
+    
+    // --- RIGHT ARM IK ---
+    if (hasRightArm && frame?.rightArm) {
+      const shoulder = landmarkTo3D(frame.rightArm.shoulder, 1);
+      const elbow = landmarkTo3D(frame.rightArm.elbow, 1);
+      const wrist = landmarkTo3D(frame.rightArm.wrist, 1);
+      
+      // Upper arm: point from shoulder to elbow
+      const upperArmRest = new THREE.Vector3(-1, 0, 0); // T-pose points right
+      const upperArmQuat = calculateLookAtRotation(shoulder, elbow, upperArmRest);
+      applyRotation('rightUpperArm', upperArmQuat);
+      
+      // Lower arm: point from elbow to wrist
+      const lowerArmQuat = calculateLookAtRotation(elbow, wrist, upperArmRest);
+      applyRotation('rightLowerArm', lowerArmQuat);
+    } else {
+      resetToRestPose('rightUpperArm');
+      resetToRestPose('rightLowerArm');
+    }
+    
+    // --- LEFT HAND & FINGERS ---
+    if (leftHandVisible && frame?.leftHand) {
+      // Hand orientation from wrist and palm landmarks
+      const wrist = landmarkTo3D(frame.leftHand[0], 3);
+      const indexBase = landmarkTo3D(frame.leftHand[5], 3);
+      const pinkyBase = landmarkTo3D(frame.leftHand[17], 3);
+      const middleBase = landmarkTo3D(frame.leftHand[9], 3);
+      
+      // Calculate palm normal
+      const palmRight = new THREE.Vector3().subVectors(indexBase, pinkyBase).normalize();
+      const palmForward = new THREE.Vector3().subVectors(middleBase, wrist).normalize();
+      const palmUp = new THREE.Vector3().crossVectors(palmForward, palmRight).normalize();
+      
+      // Create rotation matrix from palm orientation
+      const palmMatrix = new THREE.Matrix4();
+      palmMatrix.makeBasis(palmRight, palmUp, palmForward);
+      const handQuat = new THREE.Quaternion().setFromRotationMatrix(palmMatrix);
+      applyRotation('leftHand', handQuat);
+      
+      // Finger rotations
+      const thumbRots = getFingerRotations(frame.leftHand, FINGER_LANDMARKS.thumb, true);
+      const indexRots = getFingerRotations(frame.leftHand, FINGER_LANDMARKS.index, true);
+      const middleRots = getFingerRotations(frame.leftHand, FINGER_LANDMARKS.middle, true);
+      const ringRots = getFingerRotations(frame.leftHand, FINGER_LANDMARKS.ring, true);
+      const pinkyRots = getFingerRotations(frame.leftHand, FINGER_LANDMARKS.pinky, true);
+      
+      // Apply finger rotations
+      applyRotation('leftThumb1', thumbRots[0]);
+      applyRotation('leftThumb2', thumbRots[1]);
+      applyRotation('leftThumb3', thumbRots[2]);
+      
+      applyRotation('leftIndex1', indexRots[0]);
+      applyRotation('leftIndex2', indexRots[1]);
+      applyRotation('leftIndex3', indexRots[2]);
+      
+      applyRotation('leftMiddle1', middleRots[0]);
+      applyRotation('leftMiddle2', middleRots[1]);
+      applyRotation('leftMiddle3', middleRots[2]);
+      
+      applyRotation('leftRing1', ringRots[0]);
+      applyRotation('leftRing2', ringRots[1]);
+      applyRotation('leftRing3', ringRots[2]);
+      
+      applyRotation('leftPinky1', pinkyRots[0]);
+      applyRotation('leftPinky2', pinkyRots[1]);
+      applyRotation('leftPinky3', pinkyRots[2]);
+    } else {
+      // Reset fingers to rest pose
+      resetToRestPose('leftHand');
+      ['Thumb', 'Index', 'Middle', 'Ring', 'Pinky'].forEach(finger => {
+        [1, 2, 3].forEach(joint => {
+          resetToRestPose(`left${finger}${joint}`);
+        });
+      });
+    }
+    
+    // --- RIGHT HAND & FINGERS ---
+    if (rightHandVisible && frame?.rightHand) {
+      // Hand orientation from wrist and palm landmarks
+      const wrist = landmarkTo3D(frame.rightHand[0], 3);
+      const indexBase = landmarkTo3D(frame.rightHand[5], 3);
+      const pinkyBase = landmarkTo3D(frame.rightHand[17], 3);
+      const middleBase = landmarkTo3D(frame.rightHand[9], 3);
+      
+      // Calculate palm normal (mirrored for right hand)
+      const palmRight = new THREE.Vector3().subVectors(pinkyBase, indexBase).normalize();
+      const palmForward = new THREE.Vector3().subVectors(middleBase, wrist).normalize();
+      const palmUp = new THREE.Vector3().crossVectors(palmForward, palmRight).normalize();
+      
+      // Create rotation matrix from palm orientation
+      const palmMatrix = new THREE.Matrix4();
+      palmMatrix.makeBasis(palmRight, palmUp, palmForward);
+      const handQuat = new THREE.Quaternion().setFromRotationMatrix(palmMatrix);
+      applyRotation('rightHand', handQuat);
+      
+      // Finger rotations
+      const thumbRots = getFingerRotations(frame.rightHand, FINGER_LANDMARKS.thumb, false);
+      const indexRots = getFingerRotations(frame.rightHand, FINGER_LANDMARKS.index, false);
+      const middleRots = getFingerRotations(frame.rightHand, FINGER_LANDMARKS.middle, false);
+      const ringRots = getFingerRotations(frame.rightHand, FINGER_LANDMARKS.ring, false);
+      const pinkyRots = getFingerRotations(frame.rightHand, FINGER_LANDMARKS.pinky, false);
+      
+      // Apply finger rotations
+      applyRotation('rightThumb1', thumbRots[0]);
+      applyRotation('rightThumb2', thumbRots[1]);
+      applyRotation('rightThumb3', thumbRots[2]);
+      
+      applyRotation('rightIndex1', indexRots[0]);
+      applyRotation('rightIndex2', indexRots[1]);
+      applyRotation('rightIndex3', indexRots[2]);
+      
+      applyRotation('rightMiddle1', middleRots[0]);
+      applyRotation('rightMiddle2', middleRots[1]);
+      applyRotation('rightMiddle3', middleRots[2]);
+      
+      applyRotation('rightRing1', ringRots[0]);
+      applyRotation('rightRing2', ringRots[1]);
+      applyRotation('rightRing3', ringRots[2]);
+      
+      applyRotation('rightPinky1', pinkyRots[0]);
+      applyRotation('rightPinky2', pinkyRots[1]);
+      applyRotation('rightPinky3', pinkyRots[2]);
+    } else {
+      // Reset fingers to rest pose
+      resetToRestPose('rightHand');
+      ['Thumb', 'Index', 'Middle', 'Ring', 'Pinky'].forEach(finger => {
+        [1, 2, 3].forEach(joint => {
+          resetToRestPose(`right${finger}${joint}`);
+        });
+      });
+    }
+  });
+  
+  return (
+    <group ref={groupRef} position={[0, -1.0, 0]} scale={[1, 1, 1]}>
+      <primitive object={clonedScene} />
+    </group>
+  );
+};
+
+// Preload the model
+useGLTF.preload(`${import.meta.env.BASE_URL}models/Female_05.glb`);
+
+export default SkinnedMeshAvatar;
