@@ -171,17 +171,18 @@ const SkinnedMeshAvatar = ({ frame }: SkinnedMeshAvatarProps) => {
   const { scene } = useGLTF(modelPath);
   
   // Clone scene and extract bones
-  const clonedScene = useMemo(() => {
+  const { clonedScene, modelOffset } = useMemo(() => {
     const clone = scene.clone();
     
-    // Calculate bounding box to determine scale
+    // Calculate bounding box to determine scale and centering
     const box = new THREE.Box3().setFromObject(clone);
     const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
     console.log('Model size:', size);
     console.log('Model bounding box:', box);
+    console.log('Model center:', center);
     
-    // The model might be in centimeters, scale down if needed
-    // Target height is roughly 1.8 units (meters)
+    // The model is in centimeters (height ~115), scale to meters (~1.8)
     const targetHeight = 1.8;
     const currentHeight = size.y;
     const scaleFactor = currentHeight > 10 ? targetHeight / currentHeight : 1;
@@ -189,26 +190,50 @@ const SkinnedMeshAvatar = ({ frame }: SkinnedMeshAvatarProps) => {
     
     clone.scale.setScalar(scaleFactor);
     
-    // Enable shadows and fix materials
+    // Calculate offset to center model at origin (feet at y=0)
+    // The min.y is the feet position, we want that at 0
+    const scaledMinY = box.min.y * scaleFactor;
+    const offset = new THREE.Vector3(
+      -center.x * scaleFactor,
+      -scaledMinY,  // Move feet to y=0
+      -center.z * scaleFactor
+    );
+    console.log('Model offset:', offset);
+    
+    // Enable shadows and fix materials - add fallback color if no texture
+    let meshCount = 0;
     clone.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
+        meshCount++;
         child.castShadow = true;
         child.receiveShadow = true;
+        child.frustumCulled = false; // Ensure mesh is always rendered
         
         const mesh = child as THREE.SkinnedMesh;
         if (mesh.material) {
           const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
           materials.forEach((mat) => {
+            // Ensure material is visible
+            mat.visible = true;
+            mat.transparent = false;
+            mat.opacity = 1;
+            mat.side = THREE.DoubleSide;
+            
             if (mat instanceof THREE.MeshStandardMaterial) {
-              mat.roughness = 0.8;
+              mat.roughness = 0.7;
               mat.metalness = 0.1;
+              // If no map (texture), set a default skin color
+              if (!mat.map) {
+                mat.color = new THREE.Color('#e8beac');
+              }
             }
           });
         }
       }
     });
+    console.log('Mesh count:', meshCount);
     
-    return clone;
+    return { clonedScene: clone, modelOffset: offset };
   }, [scene]);
   
   // Find and store bone references on mount
@@ -431,7 +456,7 @@ const SkinnedMeshAvatar = ({ frame }: SkinnedMeshAvatarProps) => {
   });
   
   return (
-    <group ref={groupRef} position={[0, -1.0, 0]} scale={[1, 1, 1]}>
+    <group ref={groupRef} position={[modelOffset.x, modelOffset.y, modelOffset.z]}>
       <primitive object={clonedScene} />
     </group>
   );
