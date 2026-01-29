@@ -362,6 +362,7 @@ const Avatar = ({ frame, animationSpeed = 0.2 }: AvatarProps) => {
     
     // =========================================================================
     // LEFT ARM IK (MediaPipe Pose landmarks 11, 13, 15)
+    // Since leftHand bone is missing, apply wrist rotation to leftLowerArm
     // =========================================================================
     if (hasLeftArm && frame?.leftArm) {
       const shoulder = landmarkTo3D(frame.leftArm.shoulder, 1);
@@ -376,7 +377,30 @@ const Avatar = ({ frame, animationSpeed = 0.2 }: AvatarProps) => {
       applyRotation('leftUpperArm', upperArmQuat);
       
       // Lower arm: rotate from elbow to wrist
-      const lowerArmQuat = calculateLookAtRotation(elbow, wrist, upperArmRest);
+      // Since leftHand is missing, we apply wrist rotation directly to leftLowerArm
+      let lowerArmQuat = calculateLookAtRotation(elbow, wrist, upperArmRest);
+      
+      // If we have hand data, incorporate wrist/palm orientation into the lower arm
+      if (leftHandVisible && frame?.leftHand) {
+        const wristLm = landmarkTo3D(frame.leftHand[0], 3);
+        const indexBase = landmarkTo3D(frame.leftHand[5], 3);
+        const pinkyBase = landmarkTo3D(frame.leftHand[17], 3);
+        const middleBase = landmarkTo3D(frame.leftHand[9], 3);
+        
+        // Calculate palm orientation vectors
+        const palmRight = new THREE.Vector3().subVectors(indexBase, pinkyBase).normalize();
+        const palmForward = new THREE.Vector3().subVectors(middleBase, wristLm).normalize();
+        const palmUp = new THREE.Vector3().crossVectors(palmForward, palmRight).normalize();
+        
+        // Build wrist rotation from palm orientation
+        const palmMatrix = new THREE.Matrix4();
+        palmMatrix.makeBasis(palmRight, palmUp, palmForward);
+        const wristRotQuat = new THREE.Quaternion().setFromRotationMatrix(palmMatrix);
+        
+        // Combine forearm direction with wrist twist
+        lowerArmQuat.multiply(wristRotQuat);
+      }
+      
       applyRotation('leftLowerArm', lowerArmQuat);
     } else {
       resetToRestPose('leftUpperArm');
@@ -407,28 +431,11 @@ const Avatar = ({ frame, animationSpeed = 0.2 }: AvatarProps) => {
     }
     
     // =========================================================================
-    // LEFT HAND & FINGERS (MediaPipe Hand landmarks 0-20)
-    // Note: leftHand bone = 'leftarm' in model, acts as wrist anchor
+    // LEFT FINGERS (MediaPipe Hand landmarks 0-20)
+    // Note: Wrist rotation is now handled by leftLowerArm above
     // =========================================================================
     if (leftHandVisible && frame?.leftHand) {
-      // Calculate palm orientation from wrist and MCP landmarks
-      const wrist = landmarkTo3D(frame.leftHand[0], 3);
-      const indexBase = landmarkTo3D(frame.leftHand[5], 3);
-      const pinkyBase = landmarkTo3D(frame.leftHand[17], 3);
-      const middleBase = landmarkTo3D(frame.leftHand[9], 3);
-      
-      // Palm vectors for orientation
-      const palmRight = new THREE.Vector3().subVectors(indexBase, pinkyBase).normalize();
-      const palmForward = new THREE.Vector3().subVectors(middleBase, wrist).normalize();
-      const palmUp = new THREE.Vector3().crossVectors(palmForward, palmRight).normalize();
-      
-      // Build rotation matrix from palm orientation
-      const palmMatrix = new THREE.Matrix4();
-      palmMatrix.makeBasis(palmRight, palmUp, palmForward);
-      const handQuat = new THREE.Quaternion().setFromRotationMatrix(palmMatrix);
-      applyRotation('leftHand', handQuat); // Maps to 'leftarm' bone
-      
-      // Apply finger rotations
+      // Apply finger rotations only (wrist rotation handled by leftLowerArm)
       const thumbRots = getFingerRotations(frame.leftHand, FINGER_LANDMARKS.thumb, true);
       const indexRots = getFingerRotations(frame.leftHand, FINGER_LANDMARKS.index, true);
       const middleRots = getFingerRotations(frame.leftHand, FINGER_LANDMARKS.middle, true);
@@ -455,8 +462,7 @@ const Avatar = ({ frame, animationSpeed = 0.2 }: AvatarProps) => {
       applyRotation('leftPinky2', pinkyRots[1]);
       applyRotation('leftPinky3', pinkyRots[2]);
     } else {
-      // Reset left hand and fingers to rest pose
-      resetToRestPose('leftHand');
+      // Reset left fingers to rest pose
       ['Thumb', 'Index', 'Middle', 'Ring', 'Pinky'].forEach(finger => {
         [1, 2, 3].forEach(joint => {
           resetToRestPose(`left${finger}${joint}`);
