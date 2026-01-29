@@ -10,32 +10,32 @@ const FINGER_LANDMARKS = {
   pinky: [17, 18, 19, 20],
 };
 
-// Bone names that match the mixamo-avatar.glb structure (Mixamo standard naming)
+// Bone names that match the Female_05.glb structure
 const BONE_NAMES = {
   left: {
-    shoulder: 'mixamorigLeftShoulder',
-    arm: 'mixamorigLeftArm',
-    foreArm: 'mixamorigLeftForeArm',
-    hand: 'mixamorigLeftHand',
+    shoulder: 'LeftShoulder',
+    arm: 'LeftArm',
+    foreArm: 'LeftForeArm',
+    hand: 'LeftHand',
     fingers: {
-      thumb: ['mixamorigLeftHandThumb1', 'mixamorigLeftHandThumb2', 'mixamorigLeftHandThumb3'],
-      index: ['mixamorigLeftHandIndex1', 'mixamorigLeftHandIndex2', 'mixamorigLeftHandIndex3'],
-      middle: ['mixamorigLeftHandMiddle1', 'mixamorigLeftHandMiddle2', 'mixamorigLeftHandMiddle3'],
-      ring: ['mixamorigLeftHandRing1', 'mixamorigLeftHandRing2', 'mixamorigLeftHandRing3'],
-      pinky: ['mixamorigLeftHandPinky1', 'mixamorigLeftHandPinky2', 'mixamorigLeftHandPinky3'],
+      thumb: ['LeftHandThumb1', 'LeftHandThumb2', 'LeftHandThumb3'],
+      index: ['LeftHandIndex1', 'LeftHandIndex2', 'LeftHandIndex3'],
+      middle: ['LeftHandMiddle1', 'LeftHandMiddle2', 'LeftHandMiddle3'],
+      ring: ['LeftHandRing1', 'LeftHandRing2', 'LeftHandRing3'],
+      pinky: ['LeftHandPinky1', 'LeftHandPinky2', 'LeftHandPinky3'],
     },
   },
   right: {
-    shoulder: 'mixamorigRightShoulder',
-    arm: 'mixamorigRightArm',
-    foreArm: 'mixamorigRightForeArm',
-    hand: 'mixamorigRightHand',
+    shoulder: 'RightShoulder',
+    arm: 'RightArm',
+    foreArm: 'RightForeArm',
+    hand: 'RightHand',
     fingers: {
-      thumb: ['mixamorigRightHandThumb1', 'mixamorigRightHandThumb2', 'mixamorigRightHandThumb3'],
-      index: ['mixamorigRightHandIndex1', 'mixamorigRightHandIndex2', 'mixamorigRightHandIndex3'],
-      middle: ['mixamorigRightHandMiddle1', 'mixamorigRightHandMiddle2', 'mixamorigRightHandMiddle3'],
-      ring: ['mixamorigRightHandRing1', 'mixamorigRightHandRing2', 'mixamorigRightHandRing3'],
-      pinky: ['mixamorigRightHandPinky1', 'mixamorigRightHandPinky2', 'mixamorigRightHandPinky3'],
+      thumb: ['RightHandThumb1', 'RightHandThumb2', 'RightHandThumb3'],
+      index: ['RightHandIndex1', 'RightHandIndex2', 'RightHandIndex3'],
+      middle: ['RightHandMiddle1', 'RightHandMiddle2', 'RightHandMiddle3'],
+      ring: ['RightHandRing1', 'RightHandRing2', 'RightHandRing3'],
+      pinky: ['RightHandPinky1', 'RightHandPinky2', 'RightHandPinky3'],
     },
   },
 };
@@ -457,7 +457,7 @@ export const convertFramesToAvatarJSON = (
   
   return {
     version: '1.0',
-    modelName: 'mixamo-avatar.glb',
+    modelName: 'Female_05.glb',
     fps,
     totalFrames: frames.length,
     boneNames: BONE_NAMES,
