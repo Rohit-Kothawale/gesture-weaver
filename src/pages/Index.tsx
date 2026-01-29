@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Hand, User, Layers, Camera, Download, Bone, Wand2, FileJson, Upload } from 'lucide-react';
+import { Hand, User, Layers, Camera, Download, Bone, Wand2, FileJson } from 'lucide-react';
 import { downloadAvatarJSON } from '@/utils/avatarJsonExport';
 import HandVisualization from '@/components/HandVisualization';
 import AvatarVisualization from '@/components/AvatarVisualization';
-import SignAnimationVisualization from '@/components/SignAnimationVisualization';
 import FileUpload from '@/components/FileUpload';
 import VideoUpload from '@/components/VideoUpload';
 import VideoPlayer from '@/components/VideoPlayer';
@@ -14,17 +13,13 @@ import StatusPanel from '@/components/StatusPanel';
 import { useSignAnimation } from '@/hooks/useSignAnimation';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { SignAnimationData } from '@/types/sign-animation';
 
 const Index = () => {
-  const [viewMode, setViewMode] = useState<'hands' | 'avatar' | 'json'>('avatar');
+  const [viewMode, setViewMode] = useState<'hands' | 'avatar'>('avatar');
   const [showCamera, setShowCamera] = useState(false);
   const [showArms, setShowArms] = useState(true);
   const [videoFile, setVideoFile] = useState<{ file: File; url: string } | null>(null);
   const [showVideoProcessor, setShowVideoProcessor] = useState(false);
-  const [signAnimationData, setSignAnimationData] = useState<SignAnimationData | null>(null);
-  const [jsonFileName, setJsonFileName] = useState<string | null>(null);
-  const [jsonFrameIndex, setJsonFrameIndex] = useState(0);
   const {
     frames,
     currentFrame,
@@ -43,38 +38,7 @@ const Index = () => {
   } = useSignAnimation();
 
   const currentFrameData = frames[currentFrame] || null;
-  const label = signAnimationData?.word || currentFrameData?.label || 'No Data';
-
-  // Load JSON animation file
-  const handleJsonUpload = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = JSON.parse(e.target?.result as string) as SignAnimationData;
-        setSignAnimationData(data);
-        setJsonFileName(file.name);
-        setViewMode('json');
-        setJsonFrameIndex(0);
-      } catch (error) {
-        console.error('Failed to parse JSON:', error);
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  // Load sample JSON on demand
-  const loadSampleJson = async () => {
-    try {
-      const response = await fetch(`${import.meta.env.BASE_URL}data/TECHNOLOGY.json`);
-      const data = await response.json() as SignAnimationData;
-      setSignAnimationData(data);
-      setJsonFileName('TECHNOLOGY.json');
-      setViewMode('json');
-      setJsonFrameIndex(0);
-    } catch (error) {
-      console.error('Failed to load sample JSON:', error);
-    }
-  };
+  const label = currentFrameData?.label || 'No Data';
 
   // Load sample data on mount
   useEffect(() => {
@@ -138,27 +102,6 @@ const Index = () => {
               hasData={frames.length > 0}
               fileName={fileName || undefined}
             />
-            {/* JSON Animation Upload */}
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex items-center gap-1.5 sm:gap-2 whitespace-nowrap relative"
-              asChild
-            >
-              <label>
-                <Upload className="w-4 h-4" />
-                <span className="hidden xs:inline">{jsonFileName || 'Load JSON'}</span>
-                <input
-                  type="file"
-                  accept=".json"
-                  className="absolute inset-0 opacity-0 cursor-pointer"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleJsonUpload(file);
-                  }}
-                />
-              </label>
-            </Button>
             <VideoUpload
               onVideoUpload={(file, url) => setVideoFile({ file, url })}
               hasVideo={!!videoFile}
@@ -220,19 +163,6 @@ const Index = () => {
               <Layers className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               Hands Only
             </button>
-            {signAnimationData && (
-              <button
-                onClick={() => setViewMode('json')}
-                className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
-                  viewMode === 'json'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                }`}
-              >
-                <FileJson className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                JSON Avatar
-              </button>
-            )}
           </div>
           
           {/* Show Arms Toggle - only visible when in Hands Only view */}
@@ -290,13 +220,6 @@ const Index = () => {
                   <p className="text-sm sm:text-base text-muted-foreground">Loading data...</p>
                 </div>
               </div>
-            ) : viewMode === 'json' && signAnimationData ? (
-              <SignAnimationVisualization 
-                animationData={signAnimationData} 
-                isPlaying={isPlaying}
-                fps={fps}
-                onFrameChange={setJsonFrameIndex}
-              />
             ) : viewMode === 'avatar' ? (
               <AvatarVisualization frame={currentFrameData} />
             ) : (
