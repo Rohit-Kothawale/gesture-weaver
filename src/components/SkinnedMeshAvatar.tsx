@@ -8,59 +8,65 @@ interface SkinnedMeshAvatarProps {
   frame: HandFrame | null;
 }
 
-// Bone name mappings for the Female_05.glb model (based on actual bone names found)
+// Bone name mappings for the Female_05.glb model
+// Using exact bone names from the GLB: L_UpperArm, R_Forearm, Thumb_01, etc.
 const BONE_NAMES: Record<string, string> = {
   // Spine
-  hips: 'hips',
-  spine: 'spin',
-  neck: 'neck',
-  head: 'head',
+  hips: 'Hips',
+  spine: 'Spine',
+  neck: 'Neck',
+  head: 'Head',
 
-  // Left arm
-  leftShoulder: 'leftshoulder',
-  leftUpperArm: 'leftupperarm',
-  leftLowerArm: 'leftlowerarm',
-  leftHand: 'lefthand',
+  // Left arm (MediaPipe: Shoulder 11→Elbow 13→Wrist 15)
+  leftShoulder: 'L_Shoulder',
+  leftUpperArm: 'L_UpperArm',
+  leftLowerArm: 'L_Forearm',
+  leftHand: 'L_Hand',
 
-  // Right arm
-  rightShoulder: 'rightshoulder',
-  rightUpperArm: 'rightupperarm',
-  rightLowerArm: 'rightlowerarm',
-  rightHand: 'rightarm',
+  // Right arm (MediaPipe: Shoulder 12→Elbow 14→Wrist 16)
+  rightShoulder: 'R_Shoulder',
+  rightUpperArm: 'R_UpperArm',
+  rightLowerArm: 'R_Forearm',
+  rightHand: 'R_Hand',
 
-  // Left fingers (using lowercase names from GLB)
-  leftThumb1: 'leftthumb',
-  leftThumb2: 'leftthumb2',
-  leftThumb3: 'leftthumb1',
-  leftIndex1: 'leftindexfinger',
-  leftIndex2: 'leftindexfinger3',
-  leftIndex3: 'leftindexfinger2',
-  leftMiddle1: 'leftmiddlefinger',
-  leftMiddle2: 'leftmiddlefinger3',
-  leftMiddle3: 'leftmiddlefinger2',
-  leftRing1: 'leftringfinger',
-  leftRing2: 'leftringfinger3',
-  leftRing3: 'leftringfinger2',
-  leftPinky1: 'leftlittlefinger',
-  leftPinky2: 'leftlittlefinger3',
-  leftPinky3: 'leftlittlefinger2',
+  // Left fingers (MediaPipe Hand landmarks 0-20)
+  // Thumb: indices [1, 2, 3, 4] → Thumb_01, Thumb_02, Thumb_03
+  leftThumb1: 'L_Thumb_01',
+  leftThumb2: 'L_Thumb_02',
+  leftThumb3: 'L_Thumb_03',
+  // Index: indices [5, 6, 7, 8] → Index_01, Index_02, Index_03
+  leftIndex1: 'L_Index_01',
+  leftIndex2: 'L_Index_02',
+  leftIndex3: 'L_Index_03',
+  // Middle: indices [9, 10, 11, 12] → Middle_01, Middle_02, Middle_03
+  leftMiddle1: 'L_Middle_01',
+  leftMiddle2: 'L_Middle_02',
+  leftMiddle3: 'L_Middle_03',
+  // Ring: indices [13, 14, 15, 16] → Ring_01, Ring_02, Ring_03
+  leftRing1: 'L_Ring_01',
+  leftRing2: 'L_Ring_02',
+  leftRing3: 'L_Ring_03',
+  // Pinky: indices [17, 18, 19, 20] → Pinky_01, Pinky_02, Pinky_03
+  leftPinky1: 'L_Pinky_01',
+  leftPinky2: 'L_Pinky_02',
+  leftPinky3: 'L_Pinky_03',
 
   // Right fingers
-  rightThumb1: 'rightthumb',
-  rightThumb2: 'rightthumb2',
-  rightThumb3: 'rightthumb1',
-  rightIndex1: 'rightindexfinger',
-  rightIndex2: 'rightindexfinger3',
-  rightIndex3: 'rightindexfinger2',
-  rightMiddle1: 'rightmiddlefinger',
-  rightMiddle2: 'rightmiddlefinger3',
-  rightMiddle3: 'rightmiddlefinger2',
-  rightRing1: 'rightringfinger',
-  rightRing2: 'rightringfinger3',
-  rightRing3: 'rightringfinger2',
-  rightPinky1: 'rightlittlefinger',
-  rightPinky2: 'rightlittlefinger3',
-  rightPinky3: 'rightlittlefinger2',
+  rightThumb1: 'R_Thumb_01',
+  rightThumb2: 'R_Thumb_02',
+  rightThumb3: 'R_Thumb_03',
+  rightIndex1: 'R_Index_01',
+  rightIndex2: 'R_Index_02',
+  rightIndex3: 'R_Index_03',
+  rightMiddle1: 'R_Middle_01',
+  rightMiddle2: 'R_Middle_02',
+  rightMiddle3: 'R_Middle_03',
+  rightRing1: 'R_Ring_01',
+  rightRing2: 'R_Ring_02',
+  rightRing3: 'R_Ring_03',
+  rightPinky1: 'R_Pinky_01',
+  rightPinky2: 'R_Pinky_02',
+  rightPinky3: 'R_Pinky_03',
 };
 
 // Finger landmark indices in MediaPipe format
@@ -84,23 +90,32 @@ const landmarkTo3D = (coord: [number, number, number], scale: number = 1): THREE
   );
 };
 
-// Calculate rotation to point bone from start to end direction
+// Calculate rotation to align bone from its rest direction to target direction
+// Uses quaternion.setFromUnitVectors to rotate the bone's default Up vector to the target
 const calculateLookAtRotation = (
   startPos: THREE.Vector3,
   endPos: THREE.Vector3,
   restDirection: THREE.Vector3,
-  upHint: THREE.Vector3 = new THREE.Vector3(0, 1, 0)
+  parentWorldQuat?: THREE.Quaternion
 ): THREE.Quaternion => {
+  // Calculate direction vector V = Target - Source
   const targetDirection = new THREE.Vector3().subVectors(endPos, startPos).normalize();
   
-  if (targetDirection.length() < 0.001) {
+  if (targetDirection.lengthSq() < 0.000001) {
     return new THREE.Quaternion();
   }
   
-  const quaternion = new THREE.Quaternion();
-  quaternion.setFromUnitVectors(restDirection, targetDirection);
+  // Use setFromUnitVectors to align rest direction to target direction
+  const worldQuat = new THREE.Quaternion();
+  worldQuat.setFromUnitVectors(restDirection, targetDirection);
   
-  return quaternion;
+  // If parent world rotation is provided, convert to local space
+  if (parentWorldQuat) {
+    const parentInverse = parentWorldQuat.clone().invert();
+    worldQuat.premultiply(parentInverse);
+  }
+  
+  return worldQuat;
 };
 
 // Calculate finger curl angle from 3 points
@@ -243,29 +258,38 @@ const SkinnedMeshAvatar = ({ frame }: SkinnedMeshAvatarProps) => {
     const bones: { [key: string]: THREE.Bone } = {};
     const restPose: BoneRestPose = {};
     
-    // First, collect all bones by their exact name
+    // Collect all bones by their exact name (case-sensitive and lowercase for fallback)
     const allBones: { [name: string]: THREE.Bone } = {};
+    const allBonesLower: { [name: string]: THREE.Bone } = {};
     clonedScene.traverse((child) => {
       if ((child as THREE.Bone).isBone) {
         const bone = child as THREE.Bone;
-        allBones[bone.name.toLowerCase()] = bone;
+        allBones[bone.name] = bone;
+        allBonesLower[bone.name.toLowerCase()] = bone;
       }
     });
     
-    // Now map our bone keys to actual bones
+    console.log('All bone names in model:', Object.keys(allBones));
+    
+    // Now map our bone keys to actual bones (try exact match first, then lowercase)
     for (const [key, targetName] of Object.entries(BONE_NAMES)) {
-      const bone = allBones[targetName.toLowerCase()];
+      let bone = allBones[targetName];
+      if (!bone) {
+        // Fallback to lowercase match
+        bone = allBonesLower[targetName.toLowerCase()];
+      }
       if (bone) {
         bones[key] = bone;
         restPose[key] = bone.quaternion.clone();
+      } else {
+        console.warn(`Bone not found: ${targetName} (key: ${key})`);
       }
     }
     
     bonesRef.current = bones;
     restPoseRef.current = restPose;
     
-    console.log('Mapped bones:', Object.keys(bones));
-    console.log('Available bones in model:', Object.keys(allBones));
+    console.log('Successfully mapped bones:', Object.keys(bones));
   }, [clonedScene]);
   
   // Animate bones based on frame data
