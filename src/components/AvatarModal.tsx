@@ -1,6 +1,6 @@
 import { Suspense, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Grid, PerspectiveCamera, useGLTF } from '@react-three/drei';
+import { OrbitControls, Grid, OrthographicCamera, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { X } from 'lucide-react';
@@ -547,14 +547,21 @@ interface SceneProps {
 const Scene = ({ frame, animationSpeed }: SceneProps) => {
   return (
     <>
-      <PerspectiveCamera makeDefault position={[0, 1.2, 2.5]} fov={50} />
+      {/* Orthographic camera for stable 2D full-body view */}
+      <OrthographicCamera
+        makeDefault
+        position={[0, 0.9, 5]}
+        zoom={280}
+        near={0.1}
+        far={100}
+      />
       <OrbitControls
         enablePan={true}
         enableZoom={true}
         enableRotate={true}
         minDistance={0.5}
-        maxDistance={10}
-        target={[0, 1, 0]}
+        maxDistance={20}
+        target={[0, 0.9, 0]}
       />
 
       {/* Lighting */}
