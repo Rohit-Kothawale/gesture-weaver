@@ -1,6 +1,6 @@
 import { Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrthographicCamera, Grid } from '@react-three/drei';
+import { OrbitControls, Grid, PerspectiveCamera } from '@react-three/drei';
 import Avatar3D from './Avatar3D';
 import { HandFrame } from '@/types/hand-data';
 
@@ -11,22 +11,24 @@ interface AvatarVisualizationProps {
 const Scene = ({ frame }: AvatarVisualizationProps) => {
   return (
     <>
-      {/* Fixed orthographic camera for 2D-like stable view */}
-      <OrthographicCamera
-        makeDefault
-        position={[0, 0.3, 5]}
-        zoom={280}
-        near={0.1}
-        far={100}
+      <PerspectiveCamera makeDefault position={[0, 0.5, 4]} fov={50} />
+      <OrbitControls
+        enablePan={true}
+        enableZoom={true}
+        enableRotate={true}
+        minDistance={2}
+        maxDistance={8}
+        autoRotate={false}
+        target={[0, 0.3, 0]}
       />
 
       {/* Lighting */}
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[0, 2, 5]} intensity={0.8} color="#ffffff" />
-      <directionalLight position={[-2, 1, 3]} intensity={0.3} color="#00d4ff" />
+      <ambientLight intensity={0.5} />
+      <directionalLight position={[5, 5, 5]} intensity={0.8} color="#ffffff" />
+      <directionalLight position={[-5, 3, -5]} intensity={0.3} color="#00d4ff" />
       <pointLight position={[0, 3, 2]} intensity={0.4} color="#00ff88" />
 
-      {/* Subtle grid for grounding */}
+      {/* Grid */}
       <Grid
         args={[10, 10]}
         cellSize={0.5}
