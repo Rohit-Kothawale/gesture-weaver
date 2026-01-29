@@ -548,21 +548,13 @@ interface SceneProps {
 const Scene = ({ frame, animationSpeed }: SceneProps) => {
   return (
     <>
-      {/* Orthographic camera for stable 2D full-body view */}
+      {/* Orthographic camera for stable 2D full-body view - no perspective */}
       <OrthographicCamera
         makeDefault
         position={[0, 0.9, 5]}
         zoom={280}
         near={0.1}
         far={100}
-      />
-      <OrbitControls
-        enablePan={true}
-        enableZoom={true}
-        enableRotate={true}
-        minDistance={0.5}
-        maxDistance={20}
-        target={[0, 0.9, 0]}
       />
 
       {/* Lighting */}
