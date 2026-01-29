@@ -390,23 +390,13 @@ const FINGER_TIP_LANDMARKS = {
   pinky: 20,
 };
 
-// Finger base landmark indices (MCP/CMC joints)
+// Finger base landmark indices (for calculating finger vectors)
 const FINGER_BASE_LANDMARKS = {
   thumb: 1,
   index: 5,
   middle: 9,
   ring: 13,
   pinky: 17,
-};
-
-// Complete finger landmark mapping for hierarchical positioning
-// [MCP/CMC, PIP/MCP, DIP/IP, TIP]
-const FINGER_JOINT_LANDMARKS = {
-  thumb: [1, 2, 3, 4],     // CMC, MCP, IP, TIP
-  index: [5, 6, 7, 8],     // MCP, PIP, DIP, TIP
-  middle: [9, 10, 11, 12], // MCP, PIP, DIP, TIP
-  ring: [13, 14, 15, 16],  // MCP, PIP, DIP, TIP
-  pinky: [17, 18, 19, 20], // MCP, PIP, DIP, TIP
 };
 
 // Convert MediaPipe normalized coordinates (0-1) to Three.js world coordinates
@@ -417,14 +407,15 @@ const mediapipeToWorld = (
   z: number,
   handScale: number = 1.0
 ): THREE.Vector3 => {
-  // X: MediaPipe 0-1 → Three.js world coordinates
-  // Screen mirroring: no flip needed
+  // X: MediaPipe 0-1 → Three.js -xRange/2 to xRange/2
+  // Screen mirroring means we DON'T flip X (user's right = avatar's right on screen)
   const worldX = (x - 0.5) * VIEWPORT_CONFIG.xRange * handScale;
   
   // Y: MediaPipe 0 (top) to 1 (bottom) → Three.js positive (up) to negative (down)
   const worldY = (0.5 - y) * VIEWPORT_CONFIG.yRange * handScale + VIEWPORT_CONFIG.handOffsetY;
   
   // Z: MediaPipe z is negative when closer to camera
+  // Map to small depth range for 2D-like appearance
   const worldZ = -z * VIEWPORT_CONFIG.zRange * handScale + 0.3;
   
   return new THREE.Vector3(worldX, worldY, worldZ);
@@ -443,6 +434,7 @@ const calculateHandScale = (landmarks: [number, number, number][]): number => {
   const distance = Math.sqrt(dx * dx + dy * dy);
   
   // Normalize: typical palm length is about 0.15-0.25 in MediaPipe normalized coords
+  // Scale so that average hand appears at reasonable size
   const baseDistance = 0.18;
   const scale = distance / baseDistance;
   
@@ -450,28 +442,7 @@ const calculateHandScale = (landmarks: [number, number, number][]): number => {
   return THREE.MathUtils.clamp(scale, 0.5, 2.0);
 };
 
-// Helper: Convert world position to bone's local space (relative to parent)
-const worldToLocalBonePosition = (
-  bone: THREE.Bone,
-  worldPos: THREE.Vector3
-): THREE.Vector3 => {
-  if (!bone.parent) return worldPos.clone();
-  
-  // Update parent's world matrix
-  bone.parent.updateWorldMatrix(true, false);
-  
-  // Get parent's inverse world matrix
-  const parentInverse = new THREE.Matrix4().copy(bone.parent.matrixWorld).invert();
-  
-  // Transform world position to parent's local space
-  return worldPos.clone().applyMatrix4(parentInverse);
-};
-
-// =============================================================
-// HIERARCHICAL POSITION MAPPING
-// Position bones in order: Wrist → Knuckles → Tips
-// =============================================================
-
+// Apply direct position mapping to hand and finger bones
 const applyDirectPositionMapping = (
   handBone: THREE.Bone | undefined,
   fingerBones: HandBones,
@@ -481,107 +452,92 @@ const applyDirectPositionMapping = (
 ) => {
   if (!handBone || !landmarks || landmarks.length < 21) return;
 
-  // ============================================
-  // STEP 1: Position the Wrist (Hand bone) first
-  // ============================================
+  // Get wrist world position from MediaPipe landmark 0
   const wristLandmark = landmarks[0];
-  const targetWristWorldPos = mediapipeToWorld(
+  const targetWristPos = mediapipeToWorld(
     wristLandmark[0], 
     wristLandmark[1], 
     wristLandmark[2],
     handScale
   );
 
-  // Convert to local space and apply
-  const wristLocalPos = worldToLocalBonePosition(handBone, targetWristWorldPos);
-  handBone.position.lerp(wristLocalPos, lerp);
-  
-  // Update hand bone's world matrix after positioning
-  handBone.updateWorldMatrix(true, false);
+  // Move the hand bone to match wrist position
+  // We need to convert from world space to parent's local space
+  if (handBone.parent) {
+    // Update parent matrices
+    handBone.parent.updateWorldMatrix(true, false);
+    
+    const parentWorldMatrix = handBone.parent.matrixWorld;
+    const parentInverse = new THREE.Matrix4().copy(parentWorldMatrix).invert();
+    
+    // Convert target world position to parent's local space
+    const targetLocal = targetWristPos.clone().applyMatrix4(parentInverse);
+    
+    // Lerp current position to target
+    handBone.position.lerp(targetLocal, lerp);
+  }
 
-  // ============================================
-  // STEP 2: Iterate through fingers - position each joint hierarchically
-  // ============================================
+  // Apply finger curl based on finger direction vectors
   const fingers = ['thumb', 'index', 'middle', 'ring', 'pinky'] as const;
   
   for (const fingerName of fingers) {
-    const jointIndices = FINGER_JOINT_LANDMARKS[fingerName];
-    const bones = fingerBones[fingerName];
+    const tipLandmarkIdx = FINGER_TIP_LANDMARKS[fingerName];
+    const baseLandmarkIdx = FINGER_BASE_LANDMARKS[fingerName];
     
-    // Get all joint positions in world space
-    const jointWorldPositions: THREE.Vector3[] = jointIndices.map(idx => {
-      const lm = landmarks[idx];
-      return mediapipeToWorld(lm[0], lm[1], lm[2], handScale);
-    });
+    const tipLandmark = landmarks[tipLandmarkIdx];
+    const baseLandmark = landmarks[baseLandmarkIdx];
+    
+    // Calculate finger direction from base to tip (in MediaPipe space)
+    const fingerDir = new THREE.Vector3(
+      tipLandmark[0] - baseLandmark[0],
+      -(tipLandmark[1] - baseLandmark[1]), // Flip Y
+      tipLandmark[2] - baseLandmark[2]
+    ).normalize();
 
-    // Position PROXIMAL bone (knuckle) - parent is hand bone
+    // Calculate direction from wrist to finger base
+    const wristToBase = new THREE.Vector3(
+      baseLandmark[0] - wristLandmark[0],
+      -(baseLandmark[1] - wristLandmark[1]),
+      baseLandmark[2] - wristLandmark[2]
+    ).normalize();
+
+    // Dot product: 1 = extended, 0 = perpendicular, -1 = fully curled
+    const dotProduct = fingerDir.dot(wristToBase);
+    // Convert to curl amount: extended = 0, curled = 1
+    const curlAmount = (1 - dotProduct) * 0.5;
+    const curlAngle = curlAmount * Math.PI * 0.8; // Max ~144 degrees curl
+
+    const bones = fingerBones[fingerName];
+    const isThumb = fingerName === 'thumb';
+
+    // Distribute curl across finger segments
     if (bones.proximal) {
-      const targetPos = jointWorldPositions[0]; // MCP/CMC position
-      const localPos = worldToLocalBonePosition(bones.proximal, targetPos);
-      bones.proximal.position.lerp(localPos, lerp);
-      
-      // Calculate rotation to point toward next joint
-      const nextPos = jointWorldPositions[1];
-      const direction = new THREE.Vector3().subVectors(nextPos, targetPos).normalize();
-      
-      // Convert direction to rotation
-      const up = new THREE.Vector3(0, 1, 0);
-      const quaternion = new THREE.Quaternion().setFromUnitVectors(up, direction);
-      const euler = new THREE.Euler().setFromQuaternion(quaternion, 'XYZ');
-      
-      // Apply rotation with lerp
-      bones.proximal.rotation.x = THREE.MathUtils.lerp(bones.proximal.rotation.x, euler.x, lerp);
-      bones.proximal.rotation.y = THREE.MathUtils.lerp(bones.proximal.rotation.y, euler.y, lerp);
-      bones.proximal.rotation.z = THREE.MathUtils.lerp(bones.proximal.rotation.z, euler.z, lerp);
-      
-      // Update matrix for child bones
-      bones.proximal.updateWorldMatrix(true, false);
+      const targetCurl = isThumb ? curlAngle * 0.3 : curlAngle * 0.5;
+      bones.proximal.rotation.x = THREE.MathUtils.lerp(
+        bones.proximal.rotation.x, 
+        targetCurl, 
+        lerp
+      );
     }
-
-    // Position INTERMEDIATE bone (middle phalanx) - parent is proximal
     if (bones.intermediate) {
-      const targetPos = jointWorldPositions[1]; // PIP/MCP position
-      const localPos = worldToLocalBonePosition(bones.intermediate, targetPos);
-      bones.intermediate.position.lerp(localPos, lerp);
-      
-      // Calculate rotation to point toward next joint
-      const nextPos = jointWorldPositions[2];
-      const direction = new THREE.Vector3().subVectors(nextPos, targetPos).normalize();
-      
-      const up = new THREE.Vector3(0, 1, 0);
-      const quaternion = new THREE.Quaternion().setFromUnitVectors(up, direction);
-      const euler = new THREE.Euler().setFromQuaternion(quaternion, 'XYZ');
-      
-      bones.intermediate.rotation.x = THREE.MathUtils.lerp(bones.intermediate.rotation.x, euler.x, lerp);
-      bones.intermediate.rotation.y = THREE.MathUtils.lerp(bones.intermediate.rotation.y, euler.y, lerp);
-      bones.intermediate.rotation.z = THREE.MathUtils.lerp(bones.intermediate.rotation.z, euler.z, lerp);
-      
-      bones.intermediate.updateWorldMatrix(true, false);
+      const targetCurl = isThumb ? curlAngle * 0.4 : curlAngle * 0.7;
+      bones.intermediate.rotation.x = THREE.MathUtils.lerp(
+        bones.intermediate.rotation.x, 
+        targetCurl, 
+        lerp
+      );
     }
-
-    // Position DISTAL bone (fingertip) - parent is intermediate
     if (bones.distal) {
-      const targetPos = jointWorldPositions[2]; // DIP/IP position
-      const localPos = worldToLocalBonePosition(bones.distal, targetPos);
-      bones.distal.position.lerp(localPos, lerp);
-      
-      // Calculate rotation to point toward tip
-      const tipPos = jointWorldPositions[3];
-      const direction = new THREE.Vector3().subVectors(tipPos, targetPos).normalize();
-      
-      const up = new THREE.Vector3(0, 1, 0);
-      const quaternion = new THREE.Quaternion().setFromUnitVectors(up, direction);
-      const euler = new THREE.Euler().setFromQuaternion(quaternion, 'XYZ');
-      
-      bones.distal.rotation.x = THREE.MathUtils.lerp(bones.distal.rotation.x, euler.x, lerp);
-      bones.distal.rotation.y = THREE.MathUtils.lerp(bones.distal.rotation.y, euler.y, lerp);
-      bones.distal.rotation.z = THREE.MathUtils.lerp(bones.distal.rotation.z, euler.z, lerp);
+      const targetCurl = isThumb ? curlAngle * 0.3 : curlAngle * 0.5;
+      bones.distal.rotation.x = THREE.MathUtils.lerp(
+        bones.distal.rotation.x, 
+        targetCurl, 
+        lerp
+      );
     }
   }
 
-  // ============================================
-  // STEP 3: Apply overall hand/palm rotation
-  // ============================================
+  // Calculate and apply hand/wrist rotation from palm orientation
   const indexMCP = new THREE.Vector3(...landmarks[5]);
   const pinkyMCP = new THREE.Vector3(...landmarks[17]);
   const middleMCP = new THREE.Vector3(...landmarks[9]);
@@ -590,7 +546,7 @@ const applyDirectPositionMapping = (
   // Palm vectors in MediaPipe space (with Y flipped)
   const palmForward = new THREE.Vector3(
     middleMCP.x - wrist.x,
-    -(middleMCP.y - wrist.y),
+    -(middleMCP.y - wrist.y), // Flip Y
     middleMCP.z - wrist.z
   ).normalize();
 
