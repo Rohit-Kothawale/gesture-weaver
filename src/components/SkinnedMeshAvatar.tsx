@@ -2,6 +2,7 @@ import { useRef, useEffect, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
+import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { HandFrame, isHandVisible } from '@/types/hand-data';
 
 interface SkinnedMeshAvatarProps {
@@ -185,35 +186,43 @@ const SkinnedMeshAvatar = ({ frame }: SkinnedMeshAvatarProps) => {
   const modelPath = `${import.meta.env.BASE_URL}models/Female_05.glb`;
   const { scene } = useGLTF(modelPath);
   
-  // Clone scene and extract bones
+  // Clone scene using SkeletonUtils to preserve skinned mesh bone references
   const { clonedScene, modelOffset } = useMemo(() => {
-    const clone = scene.clone();
+    const clone = SkeletonUtils.clone(scene) as THREE.Group;
     
-    // Calculate bounding box to determine scale and centering
-    const box = new THREE.Box3().setFromObject(clone);
-    const size = box.getSize(new THREE.Vector3());
-    const center = box.getCenter(new THREE.Vector3());
-    console.log('Model size:', size);
-    console.log('Model bounding box:', box);
-    console.log('Model center:', center);
+    // Calculate bounding box BEFORE scaling
+    const boxBefore = new THREE.Box3().setFromObject(clone);
+    const sizeBefore = boxBefore.getSize(new THREE.Vector3());
+    console.log('Model size (before scale):', sizeBefore);
     
     // The model is in centimeters (height ~115), scale to meters (~1.8)
     const targetHeight = 1.8;
-    const currentHeight = size.y;
+    const currentHeight = sizeBefore.y;
     const scaleFactor = currentHeight > 10 ? targetHeight / currentHeight : 1;
     console.log('Scale factor:', scaleFactor, 'Current height:', currentHeight);
     
     clone.scale.setScalar(scaleFactor);
     
-    // Calculate offset to center model at origin (feet at y=0)
-    // The min.y is the feet position, we want that at 0
-    const scaledMinY = box.min.y * scaleFactor;
+    // Update matrices to apply the scale
+    clone.updateMatrixWorld(true);
+    
+    // Calculate bounding box AFTER scaling
+    const box = new THREE.Box3().setFromObject(clone);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    console.log('Model size (after scale):', size);
+    console.log('Model bounding box (after scale):', box);
+    console.log('Model center (after scale):', center);
+    
+    // Calculate offset to position model correctly:
+    // - Center on X and Z
+    // - Move feet to y=0 (subtract min.y which is now in scaled units)
     const offset = new THREE.Vector3(
-      -center.x * scaleFactor,
-      -scaledMinY,  // Move feet to y=0
-      -center.z * scaleFactor
+      -center.x,   // Center on X
+      -box.min.y,  // Move feet to y=0
+      -center.z    // Center on Z
     );
-    console.log('Model offset:', offset);
+    console.log('Model offset (feet to ground):', offset);
     
     // Enable shadows and fix materials - add fallback color if no texture
     let meshCount = 0;
@@ -333,6 +342,12 @@ const SkinnedMeshAvatar = ({ frame }: SkinnedMeshAvatarProps) => {
       const shoulder = landmarkTo3D(frame.leftArm.shoulder, 1);
       const elbow = landmarkTo3D(frame.leftArm.elbow, 1);
       const wrist = landmarkTo3D(frame.leftArm.wrist, 1);
+      
+      // Debug: log arm positions occasionally
+      if (Math.random() < 0.01) {
+        console.log('Left arm data:', { shoulder: frame.leftArm.shoulder, elbow: frame.leftArm.elbow, wrist: frame.leftArm.wrist });
+        console.log('Left arm 3D:', { shoulder, elbow, wrist });
+      }
       
       // Upper arm: point from shoulder to elbow
       const upperArmRest = new THREE.Vector3(1, 0, 0); // T-pose points left
