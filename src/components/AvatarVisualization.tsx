@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Grid, PerspectiveCamera } from '@react-three/drei';
-import Avatar3D from './Avatar3D';
+import CartoonAvatar from './CartoonAvatar';
 import { HandFrame } from '@/types/hand-data';
 
 interface AvatarVisualizationProps {
@@ -45,7 +45,7 @@ const Scene = ({ frame }: AvatarVisualizationProps) => {
 
       {/* Avatar */}
       <Suspense fallback={null}>
-        <Avatar3D frame={frame} />
+        <CartoonAvatar frame={frame} />
       </Suspense>
     </>
   );
