@@ -9,64 +9,64 @@ interface SkinnedMeshAvatarProps {
 }
 
 // Bone name mappings for the Female_05.glb model
-// Using exact bone names from the GLB: L_UpperArm, R_Forearm, Thumb_01, etc.
+// Actual bone names from the model: rightupperarm, leftforearm, rightthumb2, etc.
 const BONE_NAMES: Record<string, string> = {
   // Spine
-  hips: 'Hips',
-  spine: 'Spine',
-  neck: 'Neck',
-  head: 'Head',
+  hips: 'hips',
+  spine: 'spin', // Note: model uses 'spin' not 'spine'
+  neck: 'neck',
+  head: 'head',
 
   // Left arm (MediaPipe: Shoulder 11→Elbow 13→Wrist 15)
-  leftShoulder: 'L_Shoulder',
-  leftUpperArm: 'L_UpperArm',
-  leftLowerArm: 'L_Forearm',
-  leftHand: 'L_Hand',
+  leftShoulder: 'leftshoulder',
+  leftUpperArm: 'leftupperarm',
+  leftLowerArm: 'leftlowerarm',
+  leftHand: 'leftarm', // Note: model uses 'leftarm' for hand/wrist
 
   // Right arm (MediaPipe: Shoulder 12→Elbow 14→Wrist 16)
-  rightShoulder: 'R_Shoulder',
-  rightUpperArm: 'R_UpperArm',
-  rightLowerArm: 'R_Forearm',
-  rightHand: 'R_Hand',
+  rightShoulder: 'rightshoulder',
+  rightUpperArm: 'rightupperarm',
+  rightLowerArm: 'rightlowerarm',
+  rightHand: 'rightarm', // Note: model uses 'rightarm' for hand/wrist
 
   // Left fingers (MediaPipe Hand landmarks 0-20)
-  // Thumb: indices [1, 2, 3, 4] → Thumb_01, Thumb_02, Thumb_03
-  leftThumb1: 'L_Thumb_01',
-  leftThumb2: 'L_Thumb_02',
-  leftThumb3: 'L_Thumb_03',
-  // Index: indices [5, 6, 7, 8] → Index_01, Index_02, Index_03
-  leftIndex1: 'L_Index_01',
-  leftIndex2: 'L_Index_02',
-  leftIndex3: 'L_Index_03',
-  // Middle: indices [9, 10, 11, 12] → Middle_01, Middle_02, Middle_03
-  leftMiddle1: 'L_Middle_01',
-  leftMiddle2: 'L_Middle_02',
-  leftMiddle3: 'L_Middle_03',
-  // Ring: indices [13, 14, 15, 16] → Ring_01, Ring_02, Ring_03
-  leftRing1: 'L_Ring_01',
-  leftRing2: 'L_Ring_02',
-  leftRing3: 'L_Ring_03',
-  // Pinky: indices [17, 18, 19, 20] → Pinky_01, Pinky_02, Pinky_03
-  leftPinky1: 'L_Pinky_01',
-  leftPinky2: 'L_Pinky_02',
-  leftPinky3: 'L_Pinky_03',
+  // Thumb: indices [1, 2, 3, 4] → leftthumb, leftthumb2, leftthumb1
+  leftThumb1: 'leftthumb',
+  leftThumb2: 'leftthumb2',
+  leftThumb3: 'leftthumb1',
+  // Index: indices [5, 6, 7, 8] → leftindexfinger, leftindexfinger3, leftindexfinger2, leftindexfinger1
+  leftIndex1: 'leftindexfinger',
+  leftIndex2: 'leftindexfinger3',
+  leftIndex3: 'leftindexfinger2',
+  // Middle: indices [9, 10, 11, 12] → leftmiddlefinger, leftmiddlefinger3, leftmiddlefinger2, leftmiddlefinger1
+  leftMiddle1: 'leftmiddlefinger',
+  leftMiddle2: 'leftmiddlefinger3',
+  leftMiddle3: 'leftmiddlefinger2',
+  // Ring: indices [13, 14, 15, 16] → leftringfinger, leftringfinger3, leftringfinger2, leftringfinger1
+  leftRing1: 'leftringfinger',
+  leftRing2: 'leftringfinger3',
+  leftRing3: 'leftringfinger2',
+  // Pinky: indices [17, 18, 19, 20] → leftlittlefinger, leftlittlefinger3, leftlittlefinger2, leftlittlefinger1
+  leftPinky1: 'leftlittlefinger',
+  leftPinky2: 'leftlittlefinger3',
+  leftPinky3: 'leftlittlefinger2',
 
   // Right fingers
-  rightThumb1: 'R_Thumb_01',
-  rightThumb2: 'R_Thumb_02',
-  rightThumb3: 'R_Thumb_03',
-  rightIndex1: 'R_Index_01',
-  rightIndex2: 'R_Index_02',
-  rightIndex3: 'R_Index_03',
-  rightMiddle1: 'R_Middle_01',
-  rightMiddle2: 'R_Middle_02',
-  rightMiddle3: 'R_Middle_03',
-  rightRing1: 'R_Ring_01',
-  rightRing2: 'R_Ring_02',
-  rightRing3: 'R_Ring_03',
-  rightPinky1: 'R_Pinky_01',
-  rightPinky2: 'R_Pinky_02',
-  rightPinky3: 'R_Pinky_03',
+  rightThumb1: 'rightthumb',
+  rightThumb2: 'rightthumb2',
+  rightThumb3: 'rightthumb1',
+  rightIndex1: 'rightindexfinger',
+  rightIndex2: 'rightindexfinger3',
+  rightIndex3: 'rightindexfinger2',
+  rightMiddle1: 'rightmiddlefinger',
+  rightMiddle2: 'rightmiddlefinger3',
+  rightMiddle3: 'rightmiddlefinger2',
+  rightRing1: 'rightringfinger',
+  rightRing2: 'rightringfinger3',
+  rightRing3: 'rightringfinger2',
+  rightPinky1: 'rightlittlefinger',
+  rightPinky2: 'rightlittlefinger3',
+  rightPinky3: 'rightlittlefinger2',
 };
 
 // Finger landmark indices in MediaPipe format
