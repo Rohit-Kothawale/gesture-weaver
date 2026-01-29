@@ -6,6 +6,7 @@ import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { HandFrame, isHandVisible } from '@/types/hand-data';
+import { AvatarLoader } from '@/components/AvatarLoader';
 
 interface AvatarModalProps {
   isOpen: boolean;
@@ -586,7 +587,7 @@ const Scene = ({ frame, animationSpeed }: SceneProps) => {
       />
 
       {/* Avatar */}
-      <Suspense fallback={null}>
+      <Suspense fallback={<AvatarLoader />}>
         <Avatar frame={frame} animationSpeed={animationSpeed} />
       </Suspense>
     </>
@@ -654,7 +655,7 @@ const AvatarModal = ({
           style={{ background: 'transparent' }}
         >
           <color attach="background" args={['#0a0f14']} />
-          <Suspense fallback={null}>
+          <Suspense fallback={<AvatarLoader />}>
             <Scene frame={frame} animationSpeed={animationSpeed} />
           </Suspense>
         </Canvas>
