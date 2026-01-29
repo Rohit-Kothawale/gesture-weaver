@@ -79,26 +79,12 @@ interface ArmRotations {
   fingers: HandRotations;
 }
 
-// Raw MediaPipe landmark data for direct mapping
-interface RawLandmarkData {
-  landmarks: [number, number, number][]; // 21 landmarks (0-20)
-  wrist: [number, number, number];
-  // Direct 3D position in avatar space
-  avatarSpaceWrist: { x: number; y: number; z: number };
-}
-
 export interface AvatarPoseFrame {
   frameIndex: number;
   label: string;
   timestamp: number;
-  // Calculated bone rotations (for IK-based animation)
   leftArm: ArmRotations | null;
   rightArm: ArmRotations | null;
-  // Raw MediaPipe data (for direct coordinate mapping)
-  rawData: {
-    leftHand: RawLandmarkData | null;
-    rightHand: RawLandmarkData | null;
-  };
 }
 
 export interface AvatarAnimationJSON {
@@ -107,24 +93,6 @@ export interface AvatarAnimationJSON {
   fps: number;
   totalFrames: number;
   boneNames: typeof BONE_NAMES;
-  // Coordinate system description for direct mapping
-  coordinateSystem: {
-    mediapipe: {
-      description: string;
-      xRange: string;
-      yRange: string;
-      zRange: string;
-    };
-    avatarSpace: {
-      description: string;
-      xRange: string;
-      yRange: string;
-      zRange: string;
-      shoulderWidth: number;
-      shoulderHeight: number;
-      armLength: number;
-    };
-  };
   frames: AvatarPoseFrame[];
 }
 
@@ -405,8 +373,6 @@ const convertFrameToPose = (
 ): AvatarPoseFrame => {
   let leftArm: ArmRotations | null = null;
   let rightArm: ArmRotations | null = null;
-  let leftRawData: RawLandmarkData | null = null;
-  let rightRawData: RawLandmarkData | null = null;
   
   if (isHandVisible(frame.leftHand)) {
     const wrist = frame.leftHand[0];
@@ -436,13 +402,6 @@ const convertFrameToPose = (
         order: 'XYZ',
       },
       fingers: fingerRotations,
-    };
-    
-    // Include raw MediaPipe data for direct mapping
-    leftRawData = {
-      landmarks: frame.leftHand,
-      wrist: frame.leftHand[0],
-      avatarSpaceWrist: { x: targetPos.x, y: targetPos.y, z: targetPos.z },
     };
   }
   
@@ -475,13 +434,6 @@ const convertFrameToPose = (
       },
       fingers: fingerRotations,
     };
-    
-    // Include raw MediaPipe data for direct mapping
-    rightRawData = {
-      landmarks: frame.rightHand,
-      wrist: frame.rightHand[0],
-      avatarSpaceWrist: { x: targetPos.x, y: targetPos.y, z: targetPos.z },
-    };
   }
   
   return {
@@ -490,10 +442,6 @@ const convertFrameToPose = (
     timestamp: frameIndex / 30, // Assuming 30 FPS
     leftArm,
     rightArm,
-    rawData: {
-      leftHand: leftRawData,
-      rightHand: rightRawData,
-    },
   };
 };
 
@@ -513,23 +461,6 @@ export const convertFramesToAvatarJSON = (
     fps,
     totalFrames: frames.length,
     boneNames: BONE_NAMES,
-    coordinateSystem: {
-      mediapipe: {
-        description: 'Raw MediaPipe normalized coordinates (0-1 range)',
-        xRange: '0 (left) to 1 (right) - already mirrored from camera',
-        yRange: '0 (top) to 1 (bottom)',
-        zRange: 'Negative values = closer to camera',
-      },
-      avatarSpace: {
-        description: 'Converted 3D coordinates for mixamo-avatar.glb',
-        xRange: '-0.6 (left) to 0.6 (right)',
-        yRange: '-0.4 (down) to 0.4 (up) relative to shoulder',
-        zRange: '0.1 (close to body) to 0.4 (arms extended forward)',
-        shoulderWidth: AVATAR_CONFIG.shoulderWidth,
-        shoulderHeight: AVATAR_CONFIG.shoulderHeight,
-        armLength: AVATAR_CONFIG.upperArmLength + AVATAR_CONFIG.forearmLength,
-      },
-    },
     frames: poseFrames,
   };
 };
