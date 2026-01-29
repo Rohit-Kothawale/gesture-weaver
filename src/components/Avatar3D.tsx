@@ -97,22 +97,17 @@ const RELAXED_FINGER_CURL = {
 
 // ============================================================
 // ROTATION-BASED ARM MAPPING UTILITIES
-// Uses SAME coordinate system as Hand3D (normalizeCoordinates)
 // ============================================================
 
-// Scale factor to match Hand3D visualization
-const COORD_SCALE = 3;
-
-// Convert MediaPipe landmark to Three.js vector
-// MATCHING Hand3D's normalizeCoordinates exactly:
-// X: (x - 0.5) * scale (already mirrored in CameraCapture)
-// Y: (1 - y - 0.5) * scale (flip so Up is Up)
-// Z: -z * scale (depth)
+// Convert MediaPipe landmark to Three.js vector (normalized, mirrored for screen)
 const landmarkToVector = (landmark: [number, number, number]): THREE.Vector3 => {
+  // X: mirror for screen (user's right = avatar's right on screen)
+  // Y: flip (MediaPipe 0=top, Three.js positive=up)
+  // Z: negate for Three.js depth
   return new THREE.Vector3(
-    (landmark[0] - 0.5) * COORD_SCALE,      // Same as Hand3D
-    (1 - landmark[1] - 0.5) * COORD_SCALE,  // Flip Y - same as Hand3D
-    -landmark[2] * COORD_SCALE              // Depth - same as Hand3D
+    -(landmark[0] - 0.5),  // Mirror X
+    -(landmark[1] - 0.5),  // Flip Y
+    -landmark[2]           // Negate Z
   );
 };
 
@@ -128,8 +123,8 @@ const calculateBoneRotation = (
   // Direction vector from start to end
   const direction = new THREE.Vector3().subVectors(end, start).normalize();
   
-  // Mixamo bones point along positive Y in rest pose
-  // When arm hangs down, bone points down (-Y)
+  // Default bone direction in Mixamo (bones point down Y-axis when in T-pose)
+  // For arms at sides, we need to adjust the reference
   const defaultDir = new THREE.Vector3(0, -1, 0);
   
   // Calculate quaternion to rotate from default to target direction
